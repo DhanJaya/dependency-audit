@@ -1,4 +1,4 @@
-# dependency-resolver
+# dependency-audit
 
 
 This tool is designed to identify all dependencies, both direct and indirect, within a Maven project and display the resolved library versions used during build time. It highlights the specific library versions and indirect dependencies included in the final build. Te tool can further detect the code dependency tree (TODO: update this based on the findings)

@@ -12,5 +12,12 @@
         <maven.compiler.target>21</maven.compiler.target>
     </properties>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.whitesource</groupId>
+            <artifactId>maven-dependency-tree-parser</artifactId>
+            <version>1.0.6</version>
+        </dependency>
+    </dependencies>
 
 </project>
