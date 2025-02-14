@@ -62,7 +62,7 @@ public class GraphAnalyzer {
     private static LinkedList<Node> extractDependencyTree(File projectDir) {
         // For windows need to use mvn.cmd instead of mvn
         try {
-            if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputFile=%s", DEPENDENCY_TREE_FILE), projectDir)) {
+            if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputFile=%s -Dverbose", DEPENDENCY_TREE_FILE), projectDir)) {
                 // Read json file to extract the dependency tree
                 // check if file exits
                 File dependencyTreeFile = new File(projectDir, DEPENDENCY_TREE_FILE);
