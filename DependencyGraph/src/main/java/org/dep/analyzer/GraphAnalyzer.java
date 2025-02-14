@@ -5,9 +5,7 @@ import org.dep.util.CommandExecutor;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 import fr.dutra.tools.maven.deptree.core.InputType;
 import fr.dutra.tools.maven.deptree.core.Node;
@@ -16,6 +14,7 @@ import fr.dutra.tools.maven.deptree.core.Parser;
 
 public class GraphAnalyzer {
     public static final String DEPENDENCY_TREE_FILE = "testTree.txt";
+
     public static void main(String[] args) {
         if (args.length < 2) {
             System.out.println("Please insert 2 arguments containing the project path and the project artifact name");
@@ -39,23 +38,31 @@ public class GraphAnalyzer {
 
     private static void findDuplicates(LinkedList<Node> dependencyNodes) {
         List<DependencyModel> visitedNodes = new ArrayList<>();
-        List<String> duplicateDeps = new ArrayList<>();
-        int dependencyLevel = 1;
+        Set<String> duplicateDeps = new HashSet<>();
+        int dependencyLevel = 0;
         searchTree(dependencyNodes, dependencyLevel, visitedNodes, duplicateDeps);
-
+        duplicateDeps.forEach(System.out::println);
     }
 
-    private static void searchTree(LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, List<String> duplicateDeps) {
+    private static void searchTree(LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps) {
         dependencyNodes.forEach(dependencyNode -> {
             DependencyModel currentNode = new DependencyModel(dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), dependencyNode.getClassifier(), dependencyLevel);
-
+            visitedNodes.forEach(visitedNode -> {
+                if (visitedNode.getGroupId().equals(dependencyNode.getGroupId()) && visitedNode.getArtifactId().equals(dependencyNode.getArtifactId())) {
+                    duplicateDeps.add(currentNode.getDependencyName(false));
+                }
+            });
+            visitedNodes.add(currentNode);
+            if (!dependencyNode.getChildNodes().isEmpty()) {
+                searchTree(dependencyNode.getChildNodes(), dependencyLevel + 1, visitedNodes, duplicateDeps);
+            }
         });
     }
 
     private static LinkedList<Node> extractDependencyTree(File projectDir) {
         // For windows need to use mvn.cmd instead of mvn
         try {
-            if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputTyoe=json -DoutputFile=%s", DEPENDENCY_TREE_FILE), projectDir)) {
+            if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputFile=%s", DEPENDENCY_TREE_FILE), projectDir)) {
                 // Read json file to extract the dependency tree
                 // check if file exits
                 File dependencyTreeFile = new File(projectDir, DEPENDENCY_TREE_FILE);
