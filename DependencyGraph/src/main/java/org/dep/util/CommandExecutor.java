@@ -1,30 +1,24 @@
 package org.dep.util;
 
-import java.io.BufferedReader;
+import org.apache.commons.exec.CommandLine;
+import org.apache.commons.exec.DefaultExecutor;
+import org.apache.commons.exec.ExecuteWatchdog;
+
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.time.Duration;
 
 public class CommandExecutor {
 
-    public static boolean executeCommand(String command, File directory) throws IOException, InterruptedException {
-        ProcessBuilder processBuilder = new ProcessBuilder(command.split(" "));
-        processBuilder.directory(directory);
-        processBuilder.redirectErrorStream(true);
-
-        Process process = processBuilder.start();
-//        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-//            String line;
-//            while ((line = reader.readLine()) != null) {
-//                System.out.println(line);
-//            }
-//        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            System.err.println(command + " failed with exit code: " + exitCode);
+    public static boolean executeCommand(String command, File directory) throws IOException {
+        CommandLine cmdLine = CommandLine.parse(command);
+        DefaultExecutor executor = DefaultExecutor.builder().setWorkingDirectory(directory).get();
+        ExecuteWatchdog watchdog = ExecuteWatchdog.builder().setTimeout(Duration.ofSeconds(300)).get();
+        executor.setWatchdog(watchdog);
+        if (executor.execute(cmdLine) == 0) {
+            return true;
+        } else {
             return false;
         }
-        return true;
     }
 }

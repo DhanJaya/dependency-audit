@@ -5,19 +5,28 @@ import org.dep.util.CommandExecutor;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 import fr.dutra.tools.maven.deptree.core.InputType;
 import fr.dutra.tools.maven.deptree.core.Node;
 import fr.dutra.tools.maven.deptree.core.ParseException;
 import fr.dutra.tools.maven.deptree.core.Parser;
+import org.jgrapht.Graph;
+import org.jgrapht.graph.DefaultDirectedGraph;
+import org.jgrapht.graph.DefaultEdge;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GraphAnalyzer {
-    public static final String DEPENDENCY_TREE_FILE = "testTree.txt";
+    public static final String DEPENDENCY_TREE_FILE = "testTreecommomns.txt";
+    private static final Logger logger = LoggerFactory.getLogger(GraphAnalyzer.class);
 
     public static void main(String[] args) {
+
         if (args.length < 2) {
-            System.out.println("Please insert 2 arguments containing the project path and the project artifact name");
+            logger.error("Please insert 2 arguments containing the project path and the project artifact name");
         }
         String mvnProjectPath = args[0];
         String mvnArtifact = args[1];
@@ -26,27 +35,70 @@ public class GraphAnalyzer {
         File projectDir = new File(mvnProjectPath);
 
         if (!projectDir.exists() || !new File(projectDir, "pom.xml").exists()) {
-            System.out.println("Invalid Maven project path: " + mvnProjectPath);
+            logger.error(String.format("Invalid Maven project path: %s", mvnProjectPath));
             return;
         }
 
         LinkedList<Node> dependencyTree = extractDependencyTree(projectDir);
         // identify the duplicate libraries in the tree
         findDuplicates(dependencyTree);
+       // LinkedList<Node> dependencyTree = readDependencyTree(new File("D:\\PhD\\workspace\\DeepDependencyAnalyzer\\testTree.txt"));
+        Graph<String, DefaultEdge> cfg = generateGraph(mvnArtifact, dependencyTree);
+        export2Mermaid(cfg, Path.of("testingGraph1" + ".mermaid"));
+        export2Mermaid(mvnArtifact, dependencyTree, Path.of("testingGraph2" + ".mermaid"));
     }
 
+    public static void export2Mermaid(String artifactName, List<Node> dependencyTree, Path file) {
+        String NL = System.lineSeparator();
+        String mermaid = "graph  LR;" + NL;
 
-    private static void findDuplicates(LinkedList<Node> dependencyNodes) {
-        List<DependencyModel> visitedNodes = new ArrayList<>();
+        mermaid = constructGraph(artifactName, dependencyTree, mermaid);
+        try {
+            Files.write(file, mermaid.getBytes());
+        } catch (IOException e) {
+            logger.error(String.format("failed to create the dependency graph file %s", file.toString()));
+        }
+
+    }
+
+    private static String constructGraph(String parentNode, List<Node> dependencyTree, String mermaid) {
+        StringJoiner nodeInLevel = new StringJoiner(" & ");
+        for (Node node: dependencyTree) {
+          String depName = String.format("%s:%s-%s", node.getGroupId(), node.getArtifactId(), node.getVersion());
+            nodeInLevel.add(depName);
+            if (!node.getChildNodes().isEmpty()) {
+                mermaid = constructGraph(depName, node.getChildNodes(), mermaid);
+            }
+        }
+        mermaid = mermaid + "\t" + parentNode + " --> " + nodeInLevel.toString() +";" + System.lineSeparator();
+        return mermaid;
+    }
+
+    public static void export2Mermaid(Graph<String, DefaultEdge> cfg, Path file) {
+        String NL = System.lineSeparator();
+        String mermaid = "graph TD;" + NL;
+        for (DefaultEdge edge : cfg.edgeSet()) {
+            mermaid = mermaid + "\t" + cfg.getEdgeSource(edge) + " --> " + cfg.getEdgeTarget(edge) + NL;
+        }
+        try {
+            Files.write(file, mermaid.getBytes());
+        } catch (IOException e) {
+            logger.error(String.format("failed to create the dependency graph file %s", file.toString()));
+        }
+    }
+
+    private static LinkedList<DependencyModel> findDuplicates(LinkedList<Node> dependencyNodes) {
+        LinkedList<DependencyModel> visitedNodes = new LinkedList<>();
         Set<String> duplicateDeps = new HashSet<>();
         int dependencyLevel = 0;
         searchTree(dependencyNodes, dependencyLevel, visitedNodes, duplicateDeps);
         duplicateDeps.forEach(System.out::println);
+        return visitedNodes;
     }
 
     private static void searchTree(LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps) {
         dependencyNodes.forEach(dependencyNode -> {
-            DependencyModel currentNode = new DependencyModel(dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), dependencyNode.getClassifier(), dependencyLevel);
+            DependencyModel currentNode = new DependencyModel(dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), dependencyNode.getClassifier(), dependencyLevel, dependencyNode.isOmitted());
             visitedNodes.forEach(visitedNode -> {
                 if (visitedNode.getGroupId().equals(dependencyNode.getGroupId()) && visitedNode.getArtifactId().equals(dependencyNode.getArtifactId())) {
                     duplicateDeps.add(currentNode.getDependencyName(false));
@@ -59,6 +111,27 @@ public class GraphAnalyzer {
         });
     }
 
+    private static Graph<String, DefaultEdge> generateGraph(String startNode, LinkedList<Node> dependencyNodes) {
+        Graph<String, DefaultEdge> depTree = new DefaultDirectedGraph<>(DefaultEdge.class);
+        depTree.addVertex(startNode);
+        for (Node node : dependencyNodes) {
+            addNodesToGraph(startNode, node, depTree);
+        }
+        return depTree;
+    }
+
+    private static void addNodesToGraph(String parentNode, Node currentNode, Graph<String, DefaultEdge> depTree) {
+
+        String depName = String.format("%s:%s-%s", currentNode.getGroupId(), currentNode.getArtifactId(), currentNode.getVersion());
+        depTree.addVertex(depName);
+        depTree.addEdge(parentNode, depName);
+        if (!currentNode.getChildNodes().isEmpty()) {
+            for (Node childNode : currentNode.getChildNodes()) {
+                addNodesToGraph(depName, childNode, depTree);
+            }
+        }
+    }
+
     private static LinkedList<Node> extractDependencyTree(File projectDir) {
         // For windows need to use mvn.cmd instead of mvn
         try {
@@ -67,21 +140,26 @@ public class GraphAnalyzer {
                 // check if file exits
                 File dependencyTreeFile = new File(projectDir, DEPENDENCY_TREE_FILE);
                 if (!dependencyTreeFile.exists()) {
-                    System.out.println("No dependency tree file created");
+                    logger.warn("Could not locate the file containing the dependency tree");
                 } else {
                     return readDependencyTree(dependencyTreeFile);
                 }
             } else {
-                System.out.println("Failed to generate the dependency tree for the project");
+                logger.warn("Failed to generate the dependency tree for the project");
             }
-        } catch (IOException | InterruptedException e) {
-            System.out.println("Error occurred while generating the dependency tree");
+        } catch (IOException e) {
+            logger.warn("Error occurred while generating the dependency tree");
         }
         return new LinkedList<>();
     }
 
-    private static LinkedList<Node> readDependencyTree(File depTreeFile) throws FileNotFoundException {
-        Reader r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));
+    private static LinkedList<Node> readDependencyTree(File depTreeFile) {
+        Reader r = null;
+        try {
+            r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));
+        } catch (FileNotFoundException e) {
+            logger.warn(String.format("Failed to locate dependency tree file: %s", depTreeFile));
+        }
         InputType type = InputType.TEXT;
         Parser parser = type.newParser();
         try {
@@ -90,8 +168,10 @@ public class GraphAnalyzer {
                 return tree.getChildNodes();
             }
         } catch (ParseException e) {
-            e.printStackTrace();
+            logger.warn(String.format("Failed to parse the dependency tree file: %s", depTreeFile));
         }
         return new LinkedList<>();
     }
+
+
 }
