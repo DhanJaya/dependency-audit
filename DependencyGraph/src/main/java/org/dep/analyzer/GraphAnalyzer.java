@@ -48,11 +48,14 @@ public class GraphAnalyzer {
         export2Mermaid(mvnArtifact, dependencyTree, Path.of("testingGraph2" + ".mermaid"));
     }
 
-    public static void export2Mermaid(String artifactName, List<Node> dependencyTree, Path file) {
+    public static void export2Mermaid(String artifactName, LinkedList<Node> dependencyTree, Path file) {
+        LinkedList<DependencyModel> visitedNodes = new LinkedList<>();
+        Set<String> duplicateDeps = new HashSet<>();
+        int dependencyLevel = 0;
         String NL = System.lineSeparator();
         String mermaid = "graph  LR;" + NL;
 
-        mermaid = constructGraph(artifactName, dependencyTree, mermaid);
+        mermaid = constructGraphWithDuplicates(artifactName, dependencyTree, dependencyLevel, visitedNodes, duplicateDeps, mermaid) +" classDef highlight fill:#ffcc00,stroke:#333;";
         try {
             Files.write(file, mermaid.getBytes());
         } catch (IOException e) {
@@ -61,18 +64,6 @@ public class GraphAnalyzer {
 
     }
 
-    private static String constructGraph(String parentNode, List<Node> dependencyTree, String mermaid) {
-        StringJoiner nodeInLevel = new StringJoiner(" & ");
-        for (Node node: dependencyTree) {
-          String depName = String.format("%s:%s-%s", node.getGroupId(), node.getArtifactId(), node.getVersion());
-            nodeInLevel.add(depName);
-            if (!node.getChildNodes().isEmpty()) {
-                mermaid = constructGraph(depName, node.getChildNodes(), mermaid);
-            }
-        }
-        mermaid = mermaid + "\t" + parentNode + " --> " + nodeInLevel.toString() +";" + System.lineSeparator();
-        return mermaid;
-    }
 
     public static void export2Mermaid(Graph<String, DefaultEdge> cfg, Path file) {
         String NL = System.lineSeparator();
@@ -109,6 +100,32 @@ public class GraphAnalyzer {
                 searchTree(dependencyNode.getChildNodes(), dependencyLevel + 1, visitedNodes, duplicateDeps);
             }
         });
+    }
+
+    private static String constructGraphWithDuplicates(String parentNode, LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps, String mermaid) {
+        StringJoiner nodeInLevel = new StringJoiner(" & ");
+        for (Node dependencyNode : dependencyNodes) {
+
+            DependencyModel currentNode = new DependencyModel(dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), dependencyNode.getClassifier(), dependencyLevel, dependencyNode.isOmitted());
+            String depName = String.format("L%s-%s:%s-%s%s", dependencyLevel, dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), (dependencyNode.getClassifier() != null && !dependencyNode.getClassifier().isEmpty())
+                    ? "-" + dependencyNode.getClassifier()
+                    : "");
+            for (DependencyModel visitedNode : visitedNodes) {
+                if (visitedNode.getGroupId().equals(dependencyNode.getGroupId()) && visitedNode.getArtifactId().equals(dependencyNode.getArtifactId())) {
+                    duplicateDeps.add(currentNode.getDependencyName(false));
+                    depName = String.format("L%s-%s:%s-%s%s:::highlight", dependencyLevel, dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), (dependencyNode.getClassifier() != null && !dependencyNode.getClassifier().isEmpty())
+                            ? "-" + dependencyNode.getClassifier()
+                            : "");
+                }
+            }
+            nodeInLevel.add(depName);
+            visitedNodes.add(currentNode);
+            if (!dependencyNode.getChildNodes().isEmpty()) {
+                mermaid = constructGraphWithDuplicates(depName, dependencyNode.getChildNodes(), dependencyLevel + 1, visitedNodes, duplicateDeps, mermaid);
+            }
+        }
+        mermaid = mermaid + "\t" + parentNode + " --> " + nodeInLevel.toString() + ";" + System.lineSeparator();
+        return mermaid;
     }
 
     private static Graph<String, DefaultEdge> generateGraph(String startNode, LinkedList<Node> dependencyNodes) {
