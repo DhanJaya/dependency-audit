@@ -41,14 +41,14 @@ public class GraphAnalyzer {
 
         LinkedList<Node> dependencyTree = extractDependencyTree(projectDir);
         // identify the duplicate libraries in the tree
-        findDuplicates(dependencyTree);
+        //findDuplicates(dependencyTree);
        // LinkedList<Node> dependencyTree = readDependencyTree(new File("D:\\PhD\\workspace\\DeepDependencyAnalyzer\\testTree.txt"));
         Graph<String, DefaultEdge> cfg = generateGraph(mvnArtifact, dependencyTree);
-        export2Mermaid(cfg, Path.of("testingGraph1" + ".mermaid"));
-        export2Mermaid(mvnArtifact, dependencyTree, Path.of("testingGraph2" + ".mermaid"));
+        exportToMermaid(cfg, Path.of("testingGraph1" + ".mermaid"));
+        exportToMermaid(mvnArtifact, dependencyTree, Path.of("testingGraph2" + ".mermaid"));
     }
 
-    public static void export2Mermaid(String artifactName, LinkedList<Node> dependencyTree, Path file) {
+    public static void exportToMermaid(String artifactName, LinkedList<Node> dependencyTree, Path file) {
         LinkedList<DependencyModel> visitedNodes = new LinkedList<>();
         Set<String> duplicateDeps = new HashSet<>();
         int dependencyLevel = 0;
@@ -65,7 +65,7 @@ public class GraphAnalyzer {
     }
 
 
-    public static void export2Mermaid(Graph<String, DefaultEdge> cfg, Path file) {
+    public static void exportToMermaid(Graph<String, DefaultEdge> cfg, Path file) {
         String NL = System.lineSeparator();
         String mermaid = "graph TD;" + NL;
         for (DefaultEdge edge : cfg.edgeSet()) {
@@ -78,7 +78,7 @@ public class GraphAnalyzer {
         }
     }
 
-    private static LinkedList<DependencyModel> findDuplicates(LinkedList<Node> dependencyNodes) {
+    protected static LinkedList<DependencyModel> findDuplicates(LinkedList<Node> dependencyNodes) {
         LinkedList<DependencyModel> visitedNodes = new LinkedList<>();
         Set<String> duplicateDeps = new HashSet<>();
         int dependencyLevel = 0;
@@ -87,7 +87,7 @@ public class GraphAnalyzer {
         return visitedNodes;
     }
 
-    private static void searchTree(LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps) {
+    protected static void searchTree(LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps) {
         dependencyNodes.forEach(dependencyNode -> {
             DependencyModel currentNode = new DependencyModel(dependencyNode.getGroupId(), dependencyNode.getArtifactId(), dependencyNode.getVersion(), dependencyNode.getClassifier(), dependencyLevel, dependencyNode.isOmitted());
             visitedNodes.forEach(visitedNode -> {
@@ -102,7 +102,7 @@ public class GraphAnalyzer {
         });
     }
 
-    private static String constructGraphWithDuplicates(String parentNode, LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps, String mermaid) {
+    protected static String constructGraphWithDuplicates(String parentNode, LinkedList<Node> dependencyNodes, int dependencyLevel, List<DependencyModel> visitedNodes, Set<String> duplicateDeps, String mermaid) {
         StringJoiner nodeInLevel = new StringJoiner(" & ");
         for (Node dependencyNode : dependencyNodes) {
 
@@ -128,7 +128,7 @@ public class GraphAnalyzer {
         return mermaid;
     }
 
-    private static Graph<String, DefaultEdge> generateGraph(String startNode, LinkedList<Node> dependencyNodes) {
+    protected static Graph<String, DefaultEdge> generateGraph(String startNode, LinkedList<Node> dependencyNodes) {
         Graph<String, DefaultEdge> depTree = new DefaultDirectedGraph<>(DefaultEdge.class);
         depTree.addVertex(startNode);
         for (Node node : dependencyNodes) {
@@ -137,7 +137,7 @@ public class GraphAnalyzer {
         return depTree;
     }
 
-    private static void addNodesToGraph(String parentNode, Node currentNode, Graph<String, DefaultEdge> depTree) {
+    protected static void addNodesToGraph(String parentNode, Node currentNode, Graph<String, DefaultEdge> depTree) {
 
         String depName = String.format("%s:%s-%s", currentNode.getGroupId(), currentNode.getArtifactId(), currentNode.getVersion());
         depTree.addVertex(depName);
@@ -149,7 +149,7 @@ public class GraphAnalyzer {
         }
     }
 
-    private static LinkedList<Node> extractDependencyTree(File projectDir) {
+    protected static LinkedList<Node> extractDependencyTree(File projectDir) {
         // For windows need to use mvn.cmd instead of mvn
         try {
             if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputFile=%s -Dverbose", DEPENDENCY_TREE_FILE), projectDir)) {
@@ -170,7 +170,7 @@ public class GraphAnalyzer {
         return new LinkedList<>();
     }
 
-    private static LinkedList<Node> readDependencyTree(File depTreeFile) {
+    protected static LinkedList<Node> readDependencyTree(File depTreeFile) {
         Reader r = null;
         try {
             r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));

@@ -1,0 +1,24 @@
+org.whitesource:maven-dependency-tree-parser:jar:1.0.7-SNAPSHOT
++- commons-lang:commons-lang:jar:2.4:compile
++- commons-io:commons-io:jar:2.0.1:compile
++- org.apache.velocity:velocity:jar:1.6.4:compile
+|  +- commons-collections:commons-collections:jar:3.2.1:compile
+|  +- (commons-lang:commons-lang:jar:2.4:compile - omitted for duplicate)
+|  \- oro:oro:jar:2.0.8:compile
++- junit:junit:jar:4.8.2:test
++- org.mockito:mockito-all:jar:1.8.5:test
++- org.powermock:powermock-core:jar:1.4.9:test
+|  +- org.powermock:powermock-reflect:jar:1.4.9:test
+|  |  \- org.objenesis:objenesis:jar:1.2:test
+|  \- org.javassist:javassist:jar:3.14.0-GA:test
++- org.powermock:powermock-module-junit4:jar:1.4.9:test
+|  +- (junit:junit:jar:4.8.2:test - omitted for duplicate)
+|  \- org.powermock:powermock-module-junit4-common:jar:1.4.9:test
+|     +- (junit:junit:jar:4.4:test - omitted for conflict with 4.8.2)
+|     +- (org.powermock:powermock-core:jar:1.4.9:test - omitted for duplicate)
+|     \- (org.powermock:powermock-reflect:jar:1.4.9:test - omitted for duplicate)
+\- org.powermock:powermock-api-mockito:jar:1.4.9:test
+   +- (org.mockito:mockito-all:jar:1.8.5:test - omitted for duplicate)
+   \- org.powermock:powermock-api-support:jar:1.4.9:test
+      +- (org.powermock:powermock-core:jar:1.4.9:test - omitted for duplicate)
+      \- (org.powermock:powermock-reflect:jar:1.4.9:test - omitted for duplicate)
