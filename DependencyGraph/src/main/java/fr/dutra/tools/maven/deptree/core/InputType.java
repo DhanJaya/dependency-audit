@@ -13,17 +13,51 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
+/**
+ * 
+ */
 package fr.dutra.tools.maven.deptree.core;
 
-import org.jgrapht.Graph;
-import org.jgrapht.graph.DefaultEdge;
-
-import java.io.Reader;
 
 
-public interface Parser {
+/**
+ * @author Alexandre Dutra
+ *
+ */
+public enum InputType {
 
-    //Node parse(Reader reader) throws ParseException;
-    Graph<Node, DefaultEdge> parse(Reader reader) throws ParseException;
+    TEXT {
+
+        @Override
+        public Parser newParser() {
+            return new TextParser();
+        }
+    };
+//
+//    DOT {
+//
+//        @Override
+//        public Parser newParser() {
+//            return new DotParser();
+//        }
+//    },
+//
+//    GRAPHML {
+//
+//        @Override
+//        public Parser newParser() {
+//            return new GraphmlParser();
+//        }
+//    },
+//
+//    TGF {
+//
+//        @Override
+//        public Parser newParser() {
+//            return new TgfParser();
+//        }
+//    };
+
+    public abstract Parser newParser();
 
 }

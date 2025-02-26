@@ -13,17 +13,49 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
+/**
+ * 
+ */
 package fr.dutra.tools.maven.deptree.core;
 
-import org.jgrapht.Graph;
-import org.jgrapht.graph.DefaultEdge;
 
-import java.io.Reader;
+/**
+ * @author Alexandre Dutra
+ *
+ */
+public class ParseException extends Exception {
 
+    /**
+     * 
+     */
+    private static final long serialVersionUID = -5422097493752660982L;
 
-public interface Parser {
+    /**
+     * 
+     */
+    public ParseException() {
+    }
 
-    //Node parse(Reader reader) throws ParseException;
-    Graph<Node, DefaultEdge> parse(Reader reader) throws ParseException;
+    /**
+     * @param message
+     */
+    public ParseException(String message) {
+        super(message);
+    }
+
+    /**
+     * @param cause
+     */
+    public ParseException(Throwable cause) {
+        super(cause);
+    }
+
+    /**
+     * @param message
+     * @param cause
+     */
+    public ParseException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
 }

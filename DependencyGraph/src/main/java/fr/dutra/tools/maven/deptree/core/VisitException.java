@@ -15,15 +15,27 @@
  */
 package fr.dutra.tools.maven.deptree.core;
 
-import org.jgrapht.Graph;
-import org.jgrapht.graph.DefaultEdge;
 
-import java.io.Reader;
+public class VisitException extends Exception {
 
+    /**
+     * 
+     */
+    private static final long serialVersionUID = -8947246553563244540L;
 
-public interface Parser {
+    public VisitException() {
+    }
 
-    //Node parse(Reader reader) throws ParseException;
-    Graph<Node, DefaultEdge> parse(Reader reader) throws ParseException;
+    public VisitException(String message) {
+        super(message);
+    }
+
+    public VisitException(Throwable cause) {
+        super(cause);
+    }
+
+    public VisitException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
 }

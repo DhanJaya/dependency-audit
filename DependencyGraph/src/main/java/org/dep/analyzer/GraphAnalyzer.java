@@ -39,13 +39,13 @@ public class GraphAnalyzer {
             return;
         }
 
-        LinkedList<Node> dependencyTree = extractDependencyTree(projectDir);
+        Graph<Node, DefaultEdge>  dependencyTree = extractDependencyTree(projectDir);
         // identify the duplicate libraries in the tree
         //findDuplicates(dependencyTree);
-       // LinkedList<Node> dependencyTree = readDependencyTree(new File("D:\\PhD\\workspace\\DeepDependencyAnalyzer\\testTree.txt"));
-        Graph<String, DefaultEdge> cfg = generateGraph(mvnArtifact, dependencyTree);
-        exportToMermaid(cfg, Path.of("testingGraph1" + ".mermaid"));
-        exportToMermaid(mvnArtifact, dependencyTree, Path.of("testingGraph2" + ".mermaid"));
+        // LinkedList<Node> dependencyTree = readDependencyTree(new File("D:\\PhD\\workspace\\DeepDependencyAnalyzer\\testTree.txt"));
+       // Graph<String, DefaultEdge> cfg = generateGraph(mvnArtifact, dependencyTree);
+//        exportToMermaid(dependencyTree, Path.of("testingGraph1" + ".mermaid"));
+//        exportToMermaid(mvnArtifact, dependencyTree, Path.of("testingGraph2" + ".mermaid"));
     }
 
     public static void exportToMermaid(String artifactName, LinkedList<Node> dependencyTree, Path file) {
@@ -55,7 +55,7 @@ public class GraphAnalyzer {
         String NL = System.lineSeparator();
         String mermaid = "graph  LR;" + NL;
 
-        mermaid = constructGraphWithDuplicates(artifactName, dependencyTree, dependencyLevel, visitedNodes, duplicateDeps, mermaid) +" classDef highlight fill:#ffcc00,stroke:#333;";
+        mermaid = constructGraphWithDuplicates(artifactName, dependencyTree, dependencyLevel, visitedNodes, duplicateDeps, mermaid) + " classDef highlight fill:#ffcc00,stroke:#333;";
         try {
             Files.write(file, mermaid.getBytes());
         } catch (IOException e) {
@@ -149,7 +149,7 @@ public class GraphAnalyzer {
         }
     }
 
-    protected static LinkedList<Node> extractDependencyTree(File projectDir) {
+    protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {
         // For windows need to use mvn.cmd instead of mvn
         try {
             if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputFile=%s -Dverbose", DEPENDENCY_TREE_FILE), projectDir)) {
@@ -167,10 +167,10 @@ public class GraphAnalyzer {
         } catch (IOException e) {
             logger.warn("Error occurred while generating the dependency tree");
         }
-        return new LinkedList<>();
+        throw new RuntimeException("Error occurred while generating the dependency tree");
     }
 
-    protected static LinkedList<Node> readDependencyTree(File depTreeFile) {
+    protected static Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile) {
         Reader r = null;
         try {
             r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));
@@ -180,15 +180,11 @@ public class GraphAnalyzer {
         InputType type = InputType.TEXT;
         Parser parser = type.newParser();
         try {
-            Node tree = parser.parse(r);
-            if (tree != null) {
-                return tree.getChildNodes();
-            }
+            return parser.parse(r);
         } catch (ParseException e) {
             logger.warn(String.format("Failed to parse the dependency tree file: %s", depTreeFile));
         }
-        return new LinkedList<>();
+        throw new RuntimeException();
     }
-
 
 }

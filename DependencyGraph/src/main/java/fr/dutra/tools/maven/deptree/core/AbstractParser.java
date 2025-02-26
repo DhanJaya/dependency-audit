@@ -30,7 +30,7 @@ public abstract class AbstractParser implements Parser {
      * @param artifact
      * @return an instance of {@link Node} representing the artifact.
      */
-    protected Node parseArtifactString(final String artifact) {
+    protected Node parseArtifactString(final String artifact, final int depLevel) {
         final List<String> tokens = new ArrayList<String>(7);
         int tokenStart = 0;
         boolean tokenStarted = false;
@@ -153,6 +153,7 @@ public abstract class AbstractParser implements Parser {
                 version,
                 scope,
                 description,
+                depLevel,
                 omitted
         );
         return node;

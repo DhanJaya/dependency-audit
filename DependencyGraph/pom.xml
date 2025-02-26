@@ -26,12 +26,6 @@
             <version>1.4.0</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.whitesource</groupId>
-            <artifactId>maven-dependency-tree-parser</artifactId>
-            <version>1.0.6</version>
-        </dependency>
-
         <!-- SLF4J API -->
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -57,6 +51,21 @@
             <version>5.12.0</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.apache.commons/commons-lang3 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.17.0</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/commons-io/commons-io -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.18.0</version>
+        </dependency>
+
+
     </dependencies>
 
 </project>
