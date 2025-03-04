@@ -111,6 +111,10 @@ public class Node implements Serializable {
         return parent;
     }
 
+    public int getDepLevel() {
+        return depLevel;
+    }
+
     public LinkedList<Node> getChildNodes() {
         return this.childNodes;
     }
