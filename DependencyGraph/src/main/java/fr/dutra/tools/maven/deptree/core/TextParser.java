@@ -1,0 +1,105 @@
+/**
+ * Copyright 2011 Alexandre Dutra
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package fr.dutra.tools.maven.deptree.core;
+
+import org.jgrapht.Graph;
+import org.jgrapht.graph.DefaultDirectedGraph;
+import org.jgrapht.graph.DefaultEdge;
+
+import java.io.IOException;
+import java.io.Reader;
+
+public class TextParser extends AbstractLineBasedParser {
+
+    public Graph<Node, DefaultEdge> parse(Reader reader) throws ParseException {
+        Graph<Node, DefaultEdge> depGraph = new DefaultDirectedGraph<>(DefaultEdge.class);
+        try {
+            this.lines = splitLines(reader);
+        } catch (IOException e) {
+            throw new ParseException(e);
+        }
+
+        if (lines.isEmpty()) {
+            return null;
+        }
+        parseInternal(0, depGraph);
+        return depGraph;
+
+    }
+
+    private Node parseInternal(final int depth, Graph<Node, DefaultEdge> depGraph) {
+        final Node node = this.parseLine(depth);
+        depGraph.addVertex(node);
+        this.lineIndex++;
+
+        //children
+        while (this.lineIndex < this.lines.size() && this.computeDepth(this.lines.get(this.lineIndex)) > depth) {
+
+            final Node child = this.parseInternal(depth + 1, depGraph);
+            if (node != null) {
+                depGraph.addEdge(node, child);
+            }
+        }
+        return node;
+    }
+
+    private int computeDepth(final String line) {
+        return getArtifactIndex(line) / 3;
+    }
+
+    /**
+     * sample lineIndex structure:
+     * <pre>|  |  \- org.apache.activemq:activeio-core:test-jar:tests:3.1.0:compile</pre>
+     * @return
+     */
+    private Node parseLine(final int depth) {
+        String line = this.lines.get(this.lineIndex);
+        String artifact;
+        if (line.contains("active project artifact:")) {
+            artifact = extractActiveProjectArtifact();
+        } else {
+            artifact = extractArtifact(line);
+        }
+        return parseArtifactString(artifact, depth);
+    }
+
+    private String extractArtifact(String line) {
+        return line.substring(getArtifactIndex(line));
+    }
+
+    private int getArtifactIndex(final String line) {
+        for (int i = 0; i < line.length(); i++) {
+            final char c = line.charAt(i);
+            switch (c) {
+                case ' '://whitespace, standard and extended
+                case '|'://standard
+                case '+'://standard
+                case '\\'://standard
+                case '-'://standard
+                case '³'://extended
+                case 'Ã'://extended
+                case 'Ä'://extended
+                case 'À'://extended
+                    continue;
+                default:
+                    return i;
+            }
+        }
+        return -1;
+    }
+
+
+}
