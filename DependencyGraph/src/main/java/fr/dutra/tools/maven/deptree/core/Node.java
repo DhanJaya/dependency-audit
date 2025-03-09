@@ -1,36 +1,39 @@
 /**
  * Copyright 2011 Alexandre Dutra
- *
- *    Licensed under the Apache License, Version 2.0 (the "License");
- *    you may not use this file except in compliance with the License.
- *    You may obtain a copy of the License at
- *
- *        http://www.apache.org/licenses/LICENSE-2.0
- *
- *    Unless required by applicable law or agreed to in writing, software
- *    distributed under the License is distributed on an "AS IS" BASIS,
- *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *    See the License for the specific language governing permissions and
- *    limitations under the License.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package fr.dutra.tools.maven.deptree.core;
 
 import java.io.Serializable;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.UUID;
 
 
 /**
  * This class represents a node in the Maven Dependency Tree.
- * @author Alexandre Dutra
  *
+ * @author Alexandre Dutra
  */
 public class Node implements Serializable {
 
     /**
-     * 
+     *
      */
     private static final long serialVersionUID = 5530155206443082802L;
 
+    private UUID uuid;
     private final String groupId;
 
     private final String artifactId;
@@ -51,18 +54,18 @@ public class Node implements Serializable {
 
     private Node parent;
 
-    private final LinkedList<Node> childNodes = new LinkedList<Node>();
+    private final List<Node> childNodes = new LinkedList<>();
 
     public Node(
-        final String groupId,
-        final String artifactId,
-        final String packaging,
-        final String classifier,
-        final String version,
-        final String scope,
-        final String description,
-        final int depLevel,
-        boolean omitted) {
+            final String groupId,
+            final String artifactId,
+            final String packaging,
+            final String classifier,
+            final String version,
+            final String scope,
+            final String description,
+            final int depLevel,
+            boolean omitted) {
         super();
         this.groupId = groupId;
         this.artifactId = artifactId;
@@ -73,6 +76,7 @@ public class Node implements Serializable {
         this.description = description;
         this.depLevel = depLevel;
         this.omitted = omitted;
+        this.uuid = UUID.randomUUID();
     }
 
     public String getGroupId() {
@@ -115,7 +119,7 @@ public class Node implements Serializable {
         return depLevel;
     }
 
-    public LinkedList<Node> getChildNodes() {
+    public List<Node> getChildNodes() {
         return this.childNodes;
     }
 
@@ -227,21 +231,31 @@ public class Node implements Serializable {
         } else if (!version.equals(other.version)) {
             return false;
         }
+        if (depLevel != other.depLevel) {
+            return false;
+        }
+        if (uuid == null) {
+            if (other.uuid != null) {
+                return false;
+            }
+        } else if (!uuid.equals(other.uuid)) {
+            return false;
+        }
         return true;
     }
 
     @Override
     public Node clone() {
         final Node clone = new Node(
-            this.groupId,
-            this.artifactId,
-            this.packaging,
-            this.classifier,
-            this.version,
-            this.scope,
-            this.description,
-            this.depLevel,
-            this.omitted
+                this.groupId,
+                this.artifactId,
+                this.packaging,
+                this.classifier,
+                this.version,
+                this.scope,
+                this.description,
+                this.depLevel,
+                this.omitted
         );
         for (final Node childNode : this.childNodes) {
             clone.addChildNode(childNode.clone());
@@ -260,7 +274,7 @@ public class Node implements Serializable {
 
     public String getArtifactCanonicalForm() {
         final StringBuilder builder = new StringBuilder();
-        if(omitted) {
+        if (omitted) {
             builder.append("(");
         }
         builder.append(this.groupId);
@@ -268,21 +282,21 @@ public class Node implements Serializable {
         builder.append(this.artifactId);
         builder.append(":");
         builder.append(this.packaging);
-        if(this.classifier != null) {
+        if (this.classifier != null) {
             builder.append(":");
             builder.append(this.classifier);
         }
         builder.append(":");
         builder.append(this.version);
-        if(this.scope != null) {
+        if (this.scope != null) {
             builder.append(":");
             builder.append(this.scope);
         }
-        if(omitted) {
+        if (omitted) {
             builder.append(" - ");
             builder.append(this.description);
             builder.append(")");
-        } else if(this.description != null) {
+        } else if (this.description != null) {
             builder.append(" (");
             builder.append(this.description);
             builder.append(")");
