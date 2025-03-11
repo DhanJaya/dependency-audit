@@ -1,6 +1,9 @@
 package org.dep.analyzer;
 
 import fr.dutra.tools.maven.deptree.core.*;
+import fr.dutra.tools.maven.deptree.core.ParseException;
+import fr.dutra.tools.maven.deptree.core.Parser;
+import org.apache.commons.cli.*;
 import org.dep.model.ColorTracker;
 import org.dep.util.ColorGenerator;
 import org.dep.util.CommandExecutor;
@@ -21,25 +24,54 @@ import org.slf4j.LoggerFactory;
 public class GraphAnalyzer {
     public static final String DEPENDENCY_TREE_FILE = "DepTree.txt";
     private static final Logger logger = LoggerFactory.getLogger(GraphAnalyzer.class);
+    public static Option INPUT = Option.builder()
+            .argName("aUrlOrPOMFile")
+            .option("input")
+            .hasArg()
+            .required(true)
+            .desc("Provides the project path")
+            .build();
 
-    public static void main(String[] args) {
-        if (args.length < 2) {
-            logger.error("Please insert 2 arguments containing the project path and the project artifact name");
-        }
-        String mvnProjectPath = args[0];
+    public static Option FORMAT = Option.builder()
+            .argName("json|md")
+            .option("format")
+            .hasArg()
+            .required(true)
+            .desc("the output format , md is markdown + mermaid")
+            .build();
 
-        // verify if the project is actually a Maven project
-        File projectDir = new File(mvnProjectPath);
+    public static Option OUTPUT = Option.builder()
+            .argName("output-file")
+            .option("output")
+            .hasArg()
+            .required(true)
+            .desc("The name of the output file")
+            .build();
 
-        if (!projectDir.exists() || !new File(projectDir, "pom.xml").exists()) {
-            logger.error(String.format("Invalid Maven project path: %s", mvnProjectPath));
+    public static void main(String[] args) throws org.apache.commons.cli.ParseException {
+        Options options = new Options();
+        options.addOption(INPUT);
+        options.addOption(FORMAT);
+        options.addOption(OUTPUT);
+        // create the parser
+        CommandLineParser parser = new DefaultParser();
+        // parse the command line arguments
+        CommandLine line = parser.parse(options, args);
+        String input = line.getParsedOptionValue(INPUT);
+        String format = line.getParsedOptionValue(FORMAT);
+        String outputFile = line.getParsedOptionValue(OUTPUT);
+
+        File projectPom = new File(input);
+
+        if (!projectPom.exists()) {
+            logger.error(String.format("Invalid Maven project path: %s", input));
             return;
         }
-        Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectDir);
+        Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree);
         // generate colors
         Map<String, ColorTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        exportToMermaid(dependencyTree, generateColors, Path.of("testingGraph3" + ".mermaid"));
+        exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"));
     }
 
     protected static Map<String, Integer> findDuplicates(Graph<Node, DefaultEdge> dependencyTree) {
@@ -60,6 +92,7 @@ public class GraphAnalyzer {
 
     /**
      * Generate the mermaid file for the passed dependency tree at the given path location
+     *
      * @param dependencyTree
      * @param generateColors
      * @param file
