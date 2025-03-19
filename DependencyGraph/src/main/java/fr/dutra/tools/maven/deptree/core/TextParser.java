@@ -24,7 +24,7 @@ import java.io.Reader;
 
 public class TextParser extends AbstractLineBasedParser {
 
-    public Graph<Node, DefaultEdge> parse(Reader reader) throws ParseException {
+    public Graph<Node, DefaultEdge> parse(Reader reader, String excludeScope) throws ParseException {
         Graph<Node, DefaultEdge> depGraph = new DefaultDirectedGraph<>(DefaultEdge.class);
         try {
             this.lines = splitLines(reader);
@@ -35,24 +35,26 @@ public class TextParser extends AbstractLineBasedParser {
         if (lines.isEmpty()) {
             return null;
         }
-        parseInternal(0, depGraph);
+        parseInternal(0, depGraph, excludeScope);
         return depGraph;
 
     }
 
-    private Node parseInternal(final int depth, Graph<Node, DefaultEdge> depGraph) {
+    private Node parseInternal(final int depth, Graph<Node, DefaultEdge> depGraph,  String excludeScope) {
         final Node node = this.parseLine(depth);
-        depGraph.addVertex(node);
-        this.lineIndex++;
+       // if (node.getScope() == null || excludeScope == null || !node.getScope().equals(excludeScope.toLowerCase())) {
+            depGraph.addVertex(node);
+            this.lineIndex++;
 
-        //children
-        while (this.lineIndex < this.lines.size() && this.computeDepth(this.lines.get(this.lineIndex)) > depth) {
+            //children
+            while (this.lineIndex < this.lines.size() && this.computeDepth(this.lines.get(this.lineIndex)) > depth) {
 
-            final Node child = this.parseInternal(depth + 1, depGraph);
-            if (node != null) {
-                depGraph.addEdge(node, child);
+                final Node child = this.parseInternal(depth + 1, depGraph, excludeScope);
+                if (node != null) {
+                    depGraph.addEdge(node, child);
+                }
             }
-        }
+      //  }
         return node;
     }
 

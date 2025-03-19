@@ -61,6 +61,7 @@ public class ColorGenerator {
             // generate shades
             List<String> colors = new ArrayList<>();
             int incrementForShade = 45 / (value + 1);
+            incrementForShade = Math.min(incrementForShade, 5);
             int highlight = 50;
             for (int i = 0; i < value; i++) {
                 colors.add(hslToRgb(currentColor.get(), 60, highlight));

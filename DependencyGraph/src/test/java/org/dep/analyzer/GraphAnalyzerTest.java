@@ -21,7 +21,7 @@ public class GraphAnalyzerTest {
     public void testExtractDependencyTree() {
         URL testProject = getClass().getClassLoader().getResource("testproj1");
 
-        Graph<Node, DefaultEdge> dependencyTree = GraphAnalyzer.extractDependencyTree(new File(testProject.getFile()));
+        Graph<Node, DefaultEdge> dependencyTree = GraphAnalyzer.extractDependencyTree(new File(testProject.getFile()), null);
         Set<Node> allVertex = dependencyTree.vertexSet();
         Assertions.assertEquals(9, allVertex.size(), "The total nodes of the graph is incorrect");
         Node rootNode = allVertex.iterator().next();
@@ -32,7 +32,7 @@ public class GraphAnalyzerTest {
     @Test
     public void testDuplicateNodes() {
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
-        Graph<Node, DefaultEdge> dependencyTree = GraphAnalyzer.readDependencyTree(new File(testProject.getFile()));
+        Graph<Node, DefaultEdge> dependencyTree = GraphAnalyzer.readDependencyTree(new File(testProject.getFile()), null);
         Map<String, Integer> duplicateNodes = GraphAnalyzer.findDuplicates(dependencyTree);
         Assertions.assertEquals(5, duplicateNodes.size(), "The number of duplicate nodes does not match");
     }
@@ -42,7 +42,7 @@ public class GraphAnalyzerTest {
     public void testExportToMermaid() {
         Path depGraphInMermaid = Path.of("target/depGraph.mermaid");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
-        Graph<Node, DefaultEdge> dependencyTree = GraphAnalyzer.readDependencyTree(new File(testProject.getFile()));
+        Graph<Node, DefaultEdge> dependencyTree = GraphAnalyzer.readDependencyTree(new File(testProject.getFile()), null);
         Map<String, Integer> duplicateNodes = GraphAnalyzer.findDuplicates(dependencyTree);
         Map<String, ColorTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         GraphAnalyzer.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid);

@@ -1,9 +1,15 @@
 package org.dep.analyzer;
 
-import fr.dutra.tools.maven.deptree.core.*;
+import fr.dutra.tools.maven.deptree.core.Node;
 import fr.dutra.tools.maven.deptree.core.ParseException;
 import fr.dutra.tools.maven.deptree.core.Parser;
-import org.apache.commons.cli.*;
+import fr.dutra.tools.maven.deptree.core.TextParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
 import org.dep.model.ColorTracker;
 import org.dep.util.ColorGenerator;
 import org.dep.util.CommandExecutor;
@@ -48,18 +54,39 @@ public class GraphAnalyzer {
             .desc("The name of the output file")
             .build();
 
-    public static void main(String[] args) throws org.apache.commons.cli.ParseException {
+    public static Option EXCLUDE_SCOPE = Option.builder()
+            .argName("exclude-scope")
+            .option("exclude_scope")
+            .hasArg()
+            .desc("The scopes you want to exclude")
+            .build();
+
+    public static void main(String[] args) {
         Options options = new Options();
         options.addOption(INPUT);
         options.addOption(FORMAT);
         options.addOption(OUTPUT);
+        options.addOption(EXCLUDE_SCOPE);
         // create the parser
         CommandLineParser parser = new DefaultParser();
         // parse the command line arguments
-        CommandLine line = parser.parse(options, args);
-        String input = line.getParsedOptionValue(INPUT);
-        String format = line.getParsedOptionValue(FORMAT);
-        String outputFile = line.getParsedOptionValue(OUTPUT);
+        CommandLine line;
+        String input;
+        String format;
+        String outputFile;
+        String excludeScope;
+        try {
+            line = parser.parse(options, args);
+            input = line.getParsedOptionValue(INPUT);
+            format = line.getParsedOptionValue(FORMAT);
+            outputFile = line.getParsedOptionValue(OUTPUT);
+            excludeScope = line.getOptionValue(EXCLUDE_SCOPE);
+        } catch (org.apache.commons.cli.ParseException e) {
+            HelpFormatter helpFormatter = new HelpFormatter();
+            helpFormatter.printHelp("java -cp <path-to-build-jar>" + GraphAnalyzer.class.getName(), options);
+            throw new RuntimeException(e);
+        }
+
 
         File projectPom = new File(input);
 
@@ -67,7 +94,7 @@ public class GraphAnalyzer {
             logger.error(String.format("Invalid Maven project path: %s", input));
             return;
         }
-        Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
+        Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile(),excludeScope);
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree);
         // generate colors
         Map<String, ColorTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
@@ -130,10 +157,21 @@ public class GraphAnalyzer {
             // assign color to node and update color tracker
             ColorTracker colorTracker = generateColors.get(depName);
             String colorAssigned = colorTracker.getAssignedNodes().getOrDefault(node, null);
-
             if (colorAssigned == null) {
-                colorAssigned = colorTracker.getGeneratedColors().get(colorTracker.getIndexAssigned());
-                colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 1);
+                if (!node.isOmitted()) {
+                    colorAssigned = colorTracker.getGeneratedColors().get(0);
+                    if (colorTracker.getIndexAssigned() == 0) {
+                        colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 1);
+                    }
+                } else {
+                    if (colorTracker.getIndexAssigned() == 0) {
+                        colorAssigned = colorTracker.getGeneratedColors().get(1);
+                        colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 2);
+                    } else {
+                        colorAssigned = colorTracker.getGeneratedColors().get(colorTracker.getIndexAssigned());
+                        colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 1);
+                    }
+                }
                 colorTracker.addNode(node, colorAssigned);
             }
             return String.format("%s(L%s-%s-%s)", colorAssigned, node.getDepLevel(), depName, node.getVersion());
@@ -141,17 +179,23 @@ public class GraphAnalyzer {
         return String.format("L%s-%s:%s-%s", node.getDepLevel(), node.getGroupId(), node.getArtifactId(), node.getVersion());
     }
 
-    protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {
+    protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir, String excludeScope) {
         // For windows need to use mvn.cmd instead of mvn
+        String os = System.getProperty("os.name").toLowerCase();
+        String mvnCommand = "mvn";
+
+        if (os.contains("win")) {
+            mvnCommand = "mvn.cmd"; // Windows command
+        }
         try {
-            if (CommandExecutor.executeCommand(String.format("mvn.cmd dependency:tree -DoutputFile=%s -Dverbose", DEPENDENCY_TREE_FILE), projectDir)) {
+            if (CommandExecutor.executeCommand(String.format("%s dependency:tree -DoutputFile=%s -Dverbose", mvnCommand, DEPENDENCY_TREE_FILE), projectDir)) {
                 // Read json file to extract the dependency tree
                 // check if file exits
                 File dependencyTreeFile = new File(projectDir, DEPENDENCY_TREE_FILE);
                 if (!dependencyTreeFile.exists()) {
                     logger.warn("Could not locate the file containing the dependency tree");
                 } else {
-                    return readDependencyTree(dependencyTreeFile);
+                    return readDependencyTree(dependencyTreeFile, excludeScope);
                 }
             } else {
                 logger.warn("Failed to generate the dependency tree for the project");
@@ -162,7 +206,7 @@ public class GraphAnalyzer {
         throw new RuntimeException("Error occurred while generating the dependency tree");
     }
 
-    protected static Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile) {
+    protected static Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile, String excludeScope) {
         Reader r = null;
         try {
             r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));
@@ -171,7 +215,7 @@ public class GraphAnalyzer {
         }
         Parser parser = new TextParser();
         try {
-            return parser.parse(r);
+            return parser.parse(r, excludeScope);
         } catch (ParseException e) {
             logger.warn(String.format("Failed to parse the dependency tree file: %s", depTreeFile));
         }

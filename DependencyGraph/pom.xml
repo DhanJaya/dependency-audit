@@ -85,7 +85,8 @@
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs>
-                    <appendAssemblyId>true</appendAssemblyId>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <finalName>dependency-audit</finalName>
                 </configuration>
                 <executions>
                     <execution>

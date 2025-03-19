@@ -23,6 +23,6 @@ import java.io.Reader;
 
 public interface Parser {
 
-    Graph<Node, DefaultEdge> parse(Reader reader) throws ParseException;
+    Graph<Node, DefaultEdge> parse(Reader reader, String exclude) throws ParseException;
 
 }
