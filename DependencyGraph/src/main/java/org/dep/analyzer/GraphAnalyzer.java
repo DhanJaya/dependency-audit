@@ -10,7 +10,8 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
-import org.dep.model.ColorTracker;
+import org.dep.model.ColorStyleTracker;
+import org.dep.model.NodeStyle;
 import org.dep.util.ColorGenerator;
 import org.dep.util.CommandExecutor;
 
@@ -54,19 +55,11 @@ public class GraphAnalyzer {
             .desc("The name of the output file")
             .build();
 
-    public static Option EXCLUDE_SCOPE = Option.builder()
-            .argName("exclude-scope")
-            .option("exclude_scope")
-            .hasArg()
-            .desc("The scopes you want to exclude")
-            .build();
-
     public static void main(String[] args) {
         Options options = new Options();
         options.addOption(INPUT);
         options.addOption(FORMAT);
         options.addOption(OUTPUT);
-        options.addOption(EXCLUDE_SCOPE);
         // create the parser
         CommandLineParser parser = new DefaultParser();
         // parse the command line arguments
@@ -80,7 +73,6 @@ public class GraphAnalyzer {
             input = line.getParsedOptionValue(INPUT);
             format = line.getParsedOptionValue(FORMAT);
             outputFile = line.getParsedOptionValue(OUTPUT);
-            excludeScope = line.getOptionValue(EXCLUDE_SCOPE);
         } catch (org.apache.commons.cli.ParseException e) {
             HelpFormatter helpFormatter = new HelpFormatter();
             helpFormatter.printHelp("java -cp <path-to-build-jar>" + GraphAnalyzer.class.getName(), options);
@@ -94,10 +86,10 @@ public class GraphAnalyzer {
             logger.error(String.format("Invalid Maven project path: %s", input));
             return;
         }
-        Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile(),excludeScope);
+        Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree);
         // generate colors
-        Map<String, ColorTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
+        Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"));
     }
 
@@ -124,7 +116,7 @@ public class GraphAnalyzer {
      * @param generateColors
      * @param file
      */
-    public static void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorTracker> generateColors, Path file) {
+    public static void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file) {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
@@ -137,13 +129,33 @@ public class GraphAnalyzer {
                     visitedEdges.add(edge);
                     mermaid
                             .append("\t")
-                            .append(formatDepName(dependencyTree.getEdgeSource(edge), generateColors))
-                            .append(" --> ").append(formatDepName(dependencyTree.getEdgeTarget(edge), generateColors))
+                            .append(formatDepName(dependencyTree.getEdgeSource(edge), generateColors));
+                    if (dependencyTree.getEdgeTarget(edge).getScope() != null && dependencyTree.getEdgeTarget(edge).getScope().equals("test")) {
+                        mermaid.append(" -. test .-> ");
+                    } else {
+                        mermaid.append(" --> ");
+                    }
+                    mermaid.append(formatDepName(dependencyTree.getEdgeTarget(edge), generateColors))
                             .append(newLine);
                 }
             }
         }
-        generateColors.forEach((dep, colors) -> colors.getGeneratedColors().forEach(color -> mermaid.append("style " + color + " fill:" + color + newLine)));
+        // generateColors.forEach((dep, colors) -> colors.getGeneratedColors().forEach(color -> mermaid.append("style " + color + " fill:" + color + newLine)));
+        generateColors.forEach((dep, colors) -> {
+            List<String> generatedColors = colors.getGeneratedColors();
+            Map<Integer, NodeStyle> nodeStyles = colors.getNodeStyle(); // HashMap<Integer, String>
+
+            for (int i = 0; i < generatedColors.size(); i++) {
+                String color = generatedColors.get(i);
+                StringBuilder styleString = new StringBuilder("style " + color + " fill:" + color);
+
+                // Append node style if the index exists in the map
+                if (nodeStyles.containsKey(i)) {
+                    styleString.append(", ").append(nodeStyles.get(i).getStyle());
+                }
+                mermaid.append(styleString).append(newLine);
+            }
+        });
         try {
             Files.write(file, mermaid.toString().getBytes());
         } catch (IOException e) {
@@ -151,35 +163,62 @@ public class GraphAnalyzer {
         }
     }
 
-    private static String formatDepName(Node node, Map<String, ColorTracker> generateColors) {
+    private static String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors) {
         String depName = String.format("%s:%s", node.getGroupId(), node.getArtifactId());
+
         if (generateColors.containsKey(depName)) {
+            String prefix = "";
             // assign color to node and update color tracker
-            ColorTracker colorTracker = generateColors.get(depName);
-            String colorAssigned = colorTracker.getAssignedNodes().getOrDefault(node, null);
+            ColorStyleTracker colorStyleTracker = generateColors.get(depName);
+            String colorAssigned = colorStyleTracker.getAssignedNodes().getOrDefault(node, null);
+            int index = colorStyleTracker.getGeneratedColors().indexOf(colorAssigned);
+            if (colorStyleTracker.getNodeStyle().containsKey(index) && colorStyleTracker.getNodeStyle().get(index).getIcon() != null) {
+                prefix = colorStyleTracker.getNodeStyle().get(index).getIcon();
+            }
             if (colorAssigned == null) {
                 if (!node.isOmitted()) {
-                    colorAssigned = colorTracker.getGeneratedColors().get(0);
-                    if (colorTracker.getIndexAssigned() == 0) {
-                        colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 1);
+                    colorAssigned = colorStyleTracker.getGeneratedColors().get(0);
+                    if (colorStyleTracker.getIndexAssigned() == 0) {
+                        colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 1);
                     }
+                    prefix = "✔";
+                    NodeStyle nodeStyle = colorStyleTracker.getNodeStyle().getOrDefault(0, new NodeStyle());
+                    nodeStyle.setStyle("stroke:#10ed0c,stroke-width:10px,stroke-dasharray: 5 5");
+                    nodeStyle.setIcon(prefix);
+                    colorStyleTracker.addNodeStyle(0, nodeStyle);
                 } else {
-                    if (colorTracker.getIndexAssigned() == 0) {
-                        colorAssigned = colorTracker.getGeneratedColors().get(1);
-                        colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 2);
+
+                    int currentIndex;
+                    if (colorStyleTracker.getIndexAssigned() == 0) {
+                        currentIndex = 1;
+                        colorAssigned = colorStyleTracker.getGeneratedColors().get(1);
+                        colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 2);
                     } else {
-                        colorAssigned = colorTracker.getGeneratedColors().get(colorTracker.getIndexAssigned());
-                        colorTracker.setIndexAssigned(colorTracker.getIndexAssigned() + 1);
+                        currentIndex = colorStyleTracker.getIndexAssigned();
+                        colorAssigned = colorStyleTracker.getGeneratedColors().get(colorStyleTracker.getIndexAssigned());
+                        colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 1);
+                    }
+                    if (node.getDescription() != null && node.getDescription().contains("conflict with")) {
+                        prefix = "⚔";
+                        NodeStyle nodeStyle = colorStyleTracker.getNodeStyle().getOrDefault(currentIndex, new NodeStyle());
+                        nodeStyle.setStyle("stroke:#ed1b0c,stroke-width:10px,stroke-dasharray: 5 5");
+                        nodeStyle.setIcon(prefix);
+                        colorStyleTracker.addNodeStyle(currentIndex, nodeStyle);
                     }
                 }
-                colorTracker.addNode(node, colorAssigned);
+                colorStyleTracker.addNode(node, colorAssigned);
             }
-            return String.format("%s(L%s-%s-%s)", colorAssigned, node.getDepLevel(), depName, node.getVersion());
+            if (prefix.isEmpty()) {
+                return String.format("%s(%s L%s-%s-%s)", colorAssigned, prefix, node.getDepLevel(), depName, node.getVersion());
+            } else {
+                return String.format("%s{{\"`%s L%s-%s-%s`\"}}", colorAssigned, prefix, node.getDepLevel(), depName, node.getVersion());
+            }
+
         }
         return String.format("L%s-%s:%s-%s", node.getDepLevel(), node.getGroupId(), node.getArtifactId(), node.getVersion());
     }
 
-    protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir, String excludeScope) {
+    protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {
         // For windows need to use mvn.cmd instead of mvn
         String os = System.getProperty("os.name").toLowerCase();
         String mvnCommand = "mvn";
@@ -195,7 +234,7 @@ public class GraphAnalyzer {
                 if (!dependencyTreeFile.exists()) {
                     logger.warn("Could not locate the file containing the dependency tree");
                 } else {
-                    return readDependencyTree(dependencyTreeFile, excludeScope);
+                    return readDependencyTree(dependencyTreeFile);
                 }
             } else {
                 logger.warn("Failed to generate the dependency tree for the project");
@@ -206,7 +245,7 @@ public class GraphAnalyzer {
         throw new RuntimeException("Error occurred while generating the dependency tree");
     }
 
-    protected static Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile, String excludeScope) {
+    protected static Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile) {
         Reader r = null;
         try {
             r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));
@@ -215,7 +254,7 @@ public class GraphAnalyzer {
         }
         Parser parser = new TextParser();
         try {
-            return parser.parse(r, excludeScope);
+            return parser.parse(r);
         } catch (ParseException e) {
             logger.warn(String.format("Failed to parse the dependency tree file: %s", depTreeFile));
         }

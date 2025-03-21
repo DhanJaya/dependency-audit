@@ -6,14 +6,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ColorTracker {
+public class ColorStyleTracker {
 
     private List<String> generatedColors;
     private int indexAssigned;
 
+    private Map<Integer, NodeStyle> nodeStyle = new HashMap<>();
+
     private Map<Node, String> assignedNodeColor = new HashMap<>();
 
-    public ColorTracker(List<String> generatedColors, int indexAssigned) {
+    public ColorStyleTracker(List<String> generatedColors, int indexAssigned) {
         this.generatedColors = generatedColors;
         this.indexAssigned = indexAssigned;
     }
@@ -39,5 +41,21 @@ public class ColorTracker {
 
     public Map<Node, String> getAssignedNodes() {
         return assignedNodeColor;
+    }
+
+    public Map<Integer, NodeStyle> getNodeStyle() {
+        return nodeStyle;
+    }
+
+    public void addNodeStyle(int index, NodeStyle nodeStyle) {
+        this.nodeStyle.put(index, nodeStyle);
+    }
+
+    public Map<Node, String> getAssignedNodeColor() {
+        return assignedNodeColor;
+    }
+
+    public void setAssignedNodeColor(Map<Node, String> assignedNodeColor) {
+        this.assignedNodeColor = assignedNodeColor;
     }
 }

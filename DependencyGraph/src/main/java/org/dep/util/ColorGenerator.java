@@ -1,6 +1,6 @@
 package org.dep.util;
 
-import org.dep.model.ColorTracker;
+import org.dep.model.ColorStyleTracker;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -51,8 +51,8 @@ public class ColorGenerator {
         return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 
-    public static Map<String, ColorTracker> generateColors(Map<String, Integer> duplicateNodes) {
-        Map<String, ColorTracker> generateColors = new HashMap<>();
+    public static Map<String, ColorStyleTracker> generateColors(Map<String, Integer> duplicateNodes) {
+        Map<String, ColorStyleTracker> generateColors = new HashMap<>();
 
         // number of colors to generate
         int incrementForColor = 360 / (duplicateNodes.size() + 1);
@@ -68,8 +68,8 @@ public class ColorGenerator {
                 highlight += incrementForShade;
             }
             currentColor.getAndAdd(incrementForColor);
-            ColorTracker colorTracker = new ColorTracker(colors, 0);
-            generateColors.put(key, colorTracker);
+            ColorStyleTracker colorStyleTracker = new ColorStyleTracker(colors, 0);
+            generateColors.put(key, colorStyleTracker);
         });
         return generateColors;
     }
