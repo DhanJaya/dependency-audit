@@ -70,6 +70,11 @@
             <artifactId>jfreechart</artifactId>
             <version>1.5.5</version>
         </dependency>
+        <dependency>
+            <groupId>org.javassist</groupId>
+            <artifactId>javassist</artifactId>
+            <version>3.30.2-GA</version>
+        </dependency>
     </dependencies>
 
     <build>

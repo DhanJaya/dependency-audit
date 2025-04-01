@@ -183,7 +183,7 @@ public class GraphAnalyzer {
                     }
                     prefix = "✔";
                     NodeStyle nodeStyle = colorStyleTracker.getNodeStyle().getOrDefault(0, new NodeStyle());
-                    nodeStyle.setStyle("stroke:#10ed0c,stroke-width:10px,stroke-dasharray: 5 5");
+                    nodeStyle.setStyle("stroke-width:10px,stroke-dasharray: 5 5"); //stroke:#10ed0c,
                     nodeStyle.setIcon(prefix);
                     colorStyleTracker.addNodeStyle(0, nodeStyle);
                 } else {
