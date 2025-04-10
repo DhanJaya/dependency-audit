@@ -28,7 +28,8 @@ import org.jgrapht.traverse.BreadthFirstIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class GraphAnalyzer {
+
+public class GraphAnalyzer{
     public static final String DEPENDENCY_TREE_FILE = "DepTree.txt";
     private static final Logger logger = LoggerFactory.getLogger(GraphAnalyzer.class);
     public static Option INPUT = Option.builder()
