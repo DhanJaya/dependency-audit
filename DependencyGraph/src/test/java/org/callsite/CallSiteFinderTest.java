@@ -93,7 +93,7 @@ public class CallSiteFinderTest {
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
             CallSiteFinder.extractCallSites(cf, methodCalls, fieldReferences);
-            Assertions.assertEquals(31, methodCalls.size());
+            Assertions.assertEquals(32, methodCalls.size());
             // verify method signature exception
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.UnrecognizedOptionException"));
             // verify local variable
@@ -118,6 +118,8 @@ public class CallSiteFinderTest {
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.io.input.CharSequenceInputStream"));
             // verify method nested parameter type
             Assertions.assertTrue(methodCalls.containsKey("org.callsite.CallSiteFinder"));
+            // verify cast type and its method invocation
+            Assertions.assertTrue(methodCalls.get("javassist.bytecode.MethodInfo").contains("getAttribute::(Ljava/lang/String;)Ljavassist/bytecode/AttributeInfo;"));
 
         }
     }
