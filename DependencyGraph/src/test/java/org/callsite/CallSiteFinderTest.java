@@ -16,11 +16,11 @@ public class CallSiteFinderTest {
 
     @Test
     public void testExtractClassDetails() throws IOException, NotFoundException {
-        String classFilePath = "testcallsite\\ClassLevel.class";
+        String classFilePath = "/testcallsite/ClassLevel.class";
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
         // Load as a URL
-        URL resource = getClass().getClassLoader().getResource(classFilePath);
+        URL resource = getClass().getResource(classFilePath);
         if (resource == null) {
             throw new IllegalArgumentException("Class file not found: " + classFilePath);
         }
@@ -38,11 +38,11 @@ public class CallSiteFinderTest {
 
     @Test
     public void testExtractFieldDetails() throws IOException, NotFoundException, BadBytecode {
-        String classFilePath = "testcallsite\\InstanceAndClassFields.class";
+        String classFilePath = "/testcallsite/InstanceAndClassFields.class";
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
         // Load as a URL
-        URL resource = getClass().getClassLoader().getResource(classFilePath);
+        URL resource = getClass().getResource(classFilePath);
         if (resource == null) {
             throw new IllegalArgumentException("Class file not found: " + classFilePath);
         }
