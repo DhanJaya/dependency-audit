@@ -57,19 +57,19 @@ public class CallSiteFinderTest {
             // verify class variable initialization
             Assertions.assertTrue(methodCalls.containsKey("org.slf4j.LoggerFactory"));
             // verify class variable initialization method invocation
-            Assertions.assertTrue(methodCalls.get("org.slf4j.LoggerFactory").contains("getLogger::(Ljava/lang/Class;)Lorg/slf4j/Logger;"));
+            Assertions.assertTrue(methodCalls.get("org.slf4j.LoggerFactory").contains("getLogger(Ljava/lang/Class;)Lorg/slf4j/Logger;"));
             // verify instance variable initialization
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.Option$Builder"));
             // verify instance variable initialization method invocation
-            Assertions.assertTrue(methodCalls.get("org.apache.commons.cli.Option$Builder").contains("argName::(Ljava/lang/String;)Lorg/apache/commons/cli/Option$Builder;"));
+            Assertions.assertTrue(methodCalls.get("org.apache.commons.cli.Option$Builder").contains("argName(Ljava/lang/String;)Lorg/apache/commons/cli/Option$Builder;"));
             // verify instance variable type
             Assertions.assertTrue(methodCalls.containsKey("java.lang.StringBuilder"));
             // verify instance variable initialization using chained method
-            Assertions.assertTrue(methodCalls.get("java.lang.StringBuilder").contains("append::(Ljava/lang/String;)Ljava/lang/StringBuilder;"));
+            Assertions.assertTrue(methodCalls.get("java.lang.StringBuilder").contains("append(Ljava/lang/String;)Ljava/lang/StringBuilder;"));
             // verify exception thrown in static block
             Assertions.assertTrue(methodCalls.containsKey("java.lang.ClassNotFoundException"));
             // verify method invoked in the exception thrown in static block
-            Assertions.assertTrue(methodCalls.get("java.lang.ClassNotFoundException").contains("printStackTrace::()V"));
+            Assertions.assertTrue(methodCalls.get("java.lang.ClassNotFoundException").contains("printStackTrace()V"));
             // verify annotation used for the variable
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.lang3.builder.ToStringExclude"));
 
@@ -93,17 +93,17 @@ public class CallSiteFinderTest {
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
             CallSiteFinder.extractCallSites(cf, methodCalls, fieldReferences);
-            Assertions.assertEquals(32, methodCalls.size());
+            Assertions.assertEquals(33, methodCalls.size());
             // verify method signature exception
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.UnrecognizedOptionException"));
             // verify local variable
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.Options"));
             // verify local variable with chained methods
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.Option$Builder"));
-            Assertions.assertTrue(methodCalls.get("org.apache.commons.cli.Option$Builder").contains("required::(Z)Lorg/apache/commons/cli/Option$Builder;"));
+            Assertions.assertTrue(methodCalls.get("org.apache.commons.cli.Option$Builder").contains("required(Z)Lorg/apache/commons/cli/Option$Builder;"));
             // verify new object created
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.DefaultParser"));
-            Assertions.assertTrue(methodCalls.get("org.apache.commons.cli.DefaultParser").contains("<init>::()V"));
+            Assertions.assertTrue(methodCalls.get("org.apache.commons.cli.DefaultParser").contains("<init>()V"));
             // verify caught exception
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.ParseException"));
             // verify thrown exception
@@ -119,8 +119,9 @@ public class CallSiteFinderTest {
             // verify method nested parameter type
             Assertions.assertTrue(methodCalls.containsKey("org.callsite.CallSiteFinder"));
             // verify cast type and its method invocation
-            Assertions.assertTrue(methodCalls.get("javassist.bytecode.MethodInfo").contains("getAttribute::(Ljava/lang/String;)Ljavassist/bytecode/AttributeInfo;"));
-
+            Assertions.assertTrue(methodCalls.get("javassist.bytecode.MethodInfo").contains("getAttribute(Ljava/lang/String;)Ljavassist/bytecode/AttributeInfo;"));
+            // verify method annotation
+            Assertions.assertTrue(methodCalls.containsKey("java.lang.Deprecated"));
         }
     }
 

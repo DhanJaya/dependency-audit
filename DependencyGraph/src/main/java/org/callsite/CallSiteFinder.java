@@ -63,7 +63,7 @@ public class CallSiteFinder {
                 case ConstPool.CONST_InterfaceMethodref:
                     methodCalls
                             .computeIfAbsent(constPool.getMethodrefClassName(i), k -> new HashSet<>())
-                            .add(constPool.getMethodrefName(i) + "::" + constPool.getMethodrefType(i));
+                            .add(constPool.getMethodrefName(i) + constPool.getMethodrefType(i));
                     break;
                 case ConstPool.CONST_Fieldref:
                     fieldReferences
