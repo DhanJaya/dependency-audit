@@ -17,7 +17,18 @@ public class CallSiteFinder {
         ClassFile cf = new ClassFile(new DataInputStream(fin));
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
-        extractCallSites(cf, methodCalls, fieldReferences);
+        detectCallSites(cf, methodCalls, fieldReferences);
+    }
+
+    public static Map<String, Set<String>> extractCallSites(String classFileLocation) throws NotFoundException, IOException, BadBytecode{
+        BufferedInputStream fin
+                = new BufferedInputStream(new FileInputStream(classFileLocation));
+        ClassFile cf = new ClassFile(new DataInputStream(fin));
+        Map<String, Set<String>> methodCalls = new HashMap<>();
+        Map<String, Set<String>> fieldReferences = new HashMap<>();
+        detectCallSites(cf, methodCalls, fieldReferences);
+        methodCalls.putAll(fieldReferences);
+        return methodCalls;
     }
 
     /**
@@ -29,7 +40,7 @@ public class CallSiteFinder {
      * @throws IOException
      * @throws NotFoundException
      */
-    public static void extractCallSites(ClassFile cf, Map<String, Set<String>> methodCalls, Map<String, Set<String>> fieldReferences) throws IOException, NotFoundException, BadBytecode {
+    public static void detectCallSites(ClassFile cf, Map<String, Set<String>> methodCalls, Map<String, Set<String>> fieldReferences) throws IOException, NotFoundException, BadBytecode {
         ConstPool constPool = cf.getConstPool();
         // Extract class annotations
         extractAnnotations(cf.getAttributes(), methodCalls);

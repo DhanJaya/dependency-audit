@@ -27,7 +27,7 @@ public class CallSiteFinderTest {
 
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
-            CallSiteFinder.extractCallSites(cf, methodCalls, fieldReferences);
+            CallSiteFinder.detectCallSites(cf, methodCalls, fieldReferences);
             Assertions.assertEquals(6, methodCalls.size());
             // verify Implemented interface
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.exec.ProcessDestroyer"));
@@ -52,7 +52,7 @@ public class CallSiteFinderTest {
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
 
-            CallSiteFinder.extractCallSites(cf, methodCalls, fieldReferences);
+            CallSiteFinder.detectCallSites(cf, methodCalls, fieldReferences);
             Assertions.assertEquals(15, methodCalls.size());
             // verify class variable initialization
             Assertions.assertTrue(methodCalls.containsKey("org.slf4j.LoggerFactory"));
@@ -92,7 +92,7 @@ public class CallSiteFinderTest {
 
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
-            CallSiteFinder.extractCallSites(cf, methodCalls, fieldReferences);
+            CallSiteFinder.detectCallSites(cf, methodCalls, fieldReferences);
             Assertions.assertEquals(33, methodCalls.size());
             // verify method signature exception
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.UnrecognizedOptionException"));

@@ -37,7 +37,7 @@ public class GraphAnalyzer{
             .option("input")
             .hasArg()
             .required(true)
-            .desc("Provides the project path")
+            .desc("Provides the project pom.xml file path")
             .build();
 
     public static Option FORMAT = Option.builder()
@@ -56,7 +56,14 @@ public class GraphAnalyzer{
             .desc("The name of the output file")
             .build();
 
+    // To execute maven commands on the Windows OS need to update this to mvn.cmd
+    public static String MAVEN_CMD = "mvn";
+
     public static void main(String[] args) {
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            MAVEN_CMD = "mvn.cmd"; // Windows command
+        }
         Options options = new Options();
         options.addOption(INPUT);
         options.addOption(FORMAT);
@@ -79,7 +86,6 @@ public class GraphAnalyzer{
             helpFormatter.printHelp("java -cp <path-to-build-jar>" + GraphAnalyzer.class.getName(), options);
             throw new RuntimeException(e);
         }
-
 
         File projectPom = new File(input);
 
@@ -220,15 +226,8 @@ public class GraphAnalyzer{
     }
 
     protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {
-        // For windows need to use mvn.cmd instead of mvn
-        String os = System.getProperty("os.name").toLowerCase();
-        String mvnCommand = "mvn";
-
-        if (os.contains("win")) {
-            mvnCommand = "mvn.cmd"; // Windows command
-        }
         try {
-            if (CommandExecutor.executeCommand(String.format("%s dependency:tree -DoutputFile=%s -Dverbose", mvnCommand, DEPENDENCY_TREE_FILE), projectDir)) {
+            if (CommandExecutor.executeCommand(String.format("%s dependency:tree -DoutputFile=%s -Dverbose", MAVEN_CMD, DEPENDENCY_TREE_FILE), projectDir).contains("BUILD SUCCESS")) {
                 // Read json file to extract the dependency tree
                 // check if file exits
                 File dependencyTreeFile = new File(projectDir, DEPENDENCY_TREE_FILE);
