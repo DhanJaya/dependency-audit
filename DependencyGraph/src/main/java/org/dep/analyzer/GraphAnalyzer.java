@@ -4,6 +4,8 @@ import fr.dutra.tools.maven.deptree.core.Node;
 import fr.dutra.tools.maven.deptree.core.ParseException;
 import fr.dutra.tools.maven.deptree.core.Parser;
 import fr.dutra.tools.maven.deptree.core.TextParser;
+import javassist.NotFoundException;
+import javassist.bytecode.BadBytecode;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
@@ -59,7 +61,7 @@ public class GraphAnalyzer{
     // To execute maven commands on the Windows OS need to update this to mvn.cmd
     public static String MAVEN_CMD = "mvn";
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws NotFoundException, IOException, BadBytecode {
         String os = System.getProperty("os.name").toLowerCase();
         if (os.contains("win")) {
             MAVEN_CMD = "mvn.cmd"; // Windows command
@@ -94,6 +96,11 @@ public class GraphAnalyzer{
             return;
         }
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
+
+        DepUsage depUsage = new DepUsage();
+        depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD);
+
+
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree);
         // generate colors
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);

@@ -304,4 +304,10 @@ public class Node implements Serializable {
         return builder.toString();
     }
 
+    public String getJarName() {
+        if (this.classifier != null) {
+            return this.getArtifactId() + "-" + this.classifier + "-" + this.getVersion() + ".jar";
+        }
+        return this.getArtifactId() + "-" + this.getVersion() + ".jar";
+    }
 }
