@@ -1,4 +1,4 @@
-package org.callsite;
+package org.reference;
 
 import javassist.NotFoundException;
 import javassist.bytecode.*;
@@ -7,7 +7,7 @@ import javassist.bytecode.annotation.Annotation;
 import java.io.*;
 import java.util.*;
 
-public class CallSiteFinder {
+public class ReferenceFinder {
 
     public static void main(String[] args) throws NotFoundException, IOException, BadBytecode {
 
@@ -17,16 +17,16 @@ public class CallSiteFinder {
         ClassFile cf = new ClassFile(new DataInputStream(fin));
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
-        detectCallSites(cf, methodCalls, fieldReferences);
+        detectReferences(cf, methodCalls, fieldReferences);
     }
 
-    public static Map<String, Set<String>> extractCallSites(String classFileLocation) throws IOException, BadBytecode{
+    public static Map<String, Set<String>> extractReferences(String classFileLocation) throws IOException, BadBytecode{
         BufferedInputStream fin
                 = new BufferedInputStream(new FileInputStream(classFileLocation));
         ClassFile cf = new ClassFile(new DataInputStream(fin));
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
-        detectCallSites(cf, methodCalls, fieldReferences);
+        detectReferences(cf, methodCalls, fieldReferences);
         methodCalls.putAll(fieldReferences);
         return methodCalls;
     }
@@ -40,7 +40,7 @@ public class CallSiteFinder {
      * @throws IOException
      * @throws NotFoundException
      */
-    public static void detectCallSites(ClassFile cf, Map<String, Set<String>> methodCalls, Map<String, Set<String>> fieldReferences) throws BadBytecode {
+    public static void detectReferences(ClassFile cf, Map<String, Set<String>> methodCalls, Map<String, Set<String>> fieldReferences) throws BadBytecode {
         ConstPool constPool = cf.getConstPool();
         // Extract class annotations
         extractAnnotations(cf.getAttributes(), methodCalls);

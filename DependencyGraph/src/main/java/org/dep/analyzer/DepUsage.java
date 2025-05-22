@@ -3,11 +3,12 @@ package org.dep.analyzer;
 import fr.dutra.tools.maven.deptree.core.Node;
 import javassist.*;
 import javassist.bytecode.BadBytecode;
-import org.callsite.CallSiteFinder;
+import org.reference.ReferenceFinder;
 import org.dep.util.CommandExecutor;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.traverse.BreadthFirstIterator;
+import org.dep.model.ParentReferenceMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,94 +59,195 @@ public class DepUsage {
                         excludeInternalCallSites(callSitesInClientSourceCode, clientClasses);
                         excludeInternalCallSites(callSitesInClientTestCode, clientClasses);
                         // TODO: map the call sites with dependency classes
-                        Map<Node, Map<String, Set<String>>> invokedFunctions = new HashMap<>();
-                        getDeepDepCalls(dependencyClasses, callSitesInClientSourceCode, invokedFunctions);
-                        getDeepDepCalls(dependencyClasses, callSitesInClientTestCode, invokedFunctions);
+                        Map<Node, Map<String, Set<String>>> invokedReferences = new HashMap<>();
+                        getDeepDepCalls(dependencyClasses, callSitesInClientSourceCode, invokedReferences);
+                        getDeepDepCalls(dependencyClasses, callSitesInClientTestCode, invokedReferences);
                         // Check if all the functions invoked are actually in the jar file of the dependency its matched with
+                        Map<Node, Map<String, Set<String>>> unMappedReferences = new HashMap<>();
+                        Map<Node, Map<String, Set<String>>> mappedReferences = new HashMap<>();
+                        List<ParentReferenceMap> parentReferencesToVerify = verifyFunctionsAreInDepJars(invokedReferences, dependencyDirectory, mappedReferences, unMappedReferences);
+
+                        // if unMappedReferences is not empty need to run this iteratively
+                        if (parentReferencesToVerify.size() > 0) {
+                            // need to check the dependency tree to verify the class
+
+                        }
+
+
                     }
                 }
             }
         }
     }
 
-    private void verifyFunctionsAreInDepJars(Map<Node, Map<String, Set<String>>> invokedMethods) {
-        Map<Node, Map<String, Set<String>>> mappedMethods = new HashMap<>();
-        Map<Node, Map<String, Set<String>>> unMappedMethods = new HashMap<>();
-        for (Map.Entry<Node, Map<String, Set<String>>> invokedMethodsEntry : invokedMethods.entrySet()) {
-            Node node = invokedMethodsEntry.getKey();
-            Map<String, Set<String>> invokedClassAndMethods = invokedMethodsEntry.getValue();
-            String jarName = node.getJarName();
+    private List<ParentReferenceMap> verifyFunctionsAreInDepJars(Map<Node, Map<String, Set<String>>> invokedReferences, File depDirectory, Map<Node, Map<String, Set<String>>> mappedReferences, Map<Node, Map<String, Set<String>>> unMappedReferences) {
+        List<ParentReferenceMap> parentReferencesToVerify = new ArrayList<>();
+        for (Map.Entry<Node, Map<String, Set<String>>> invokedReferencessEntry : invokedReferences.entrySet()) {
+            Node dependency = invokedReferencessEntry.getKey();
+            Map<String, Set<String>> invokedClassAndReferences = invokedReferencessEntry.getValue();
+            String dependencyJarName = dependency.getJarName();
             // check if jar is in path
-            try (JarFile jarFile = new JarFile(COPY_DEPENDENCY_FOLDER + "/" + jarName)) {
-                for (Map.Entry<String, Set<String>> invokedClassAndMethodsEntry : invokedClassAndMethods.entrySet()) {
-                    String className = invokedClassAndMethodsEntry.getKey();
-                    Set<String> methodsAndFields = invokedClassAndMethodsEntry.getValue();
+            try (JarFile dependencyJarFile = new JarFile(depDirectory + "/" + dependencyJarName)) {
+                for (Map.Entry<String, Set<String>> invokedClassAndReferencesEntry : invokedClassAndReferences.entrySet()) {
+                    String className = invokedClassAndReferencesEntry.getKey();
+                    Set<String> methodsAndFields = invokedClassAndReferencesEntry.getValue();
 
                     String classEntryName = className.replace('.', '/') + ".class";
-                    JarEntry entry = jarFile.getJarEntry(classEntryName);
+                    JarEntry jarEntry = dependencyJarFile.getJarEntry(classEntryName);
 
-                    if (entry == null) {
-                        System.out.println("Class " + className + " not found in the jar.");
-                        Map unMappedClasses = unMappedMethods.getOrDefault(node, new HashMap<>());
-                        unMappedClasses.put(className, methodsAndFields);
-                        unMappedMethods.put(node, unMappedClasses);
+                    if (trackNotFoundClasses(unMappedReferences, dependency, className, methodsAndFields, jarEntry))
                         break;
-                    }
                     if (methodsAndFields.isEmpty()) {
-                        Map mappedClasses = mappedMethods.getOrDefault(node, new HashMap<>());
-                        mappedClasses.put(className, methodsAndFields);
-                        mappedMethods.put(node, mappedClasses);
+                        Map mappedPriorReferences = mappedReferences.getOrDefault(dependency, new HashMap<>());
+                        mappedPriorReferences.put(className, methodsAndFields);
+                        mappedReferences.put(dependency, mappedPriorReferences);
                     } else {
                         // if there is a match need to check if the class contains the fields and methods
-                        InputStream classInputStream = jarFile.getInputStream(entry);
+                        InputStream classInputStream = dependencyJarFile.getInputStream(jarEntry);
                         ClassPool pool = ClassPool.getDefault();
                         CtClass ctClass = pool.makeClass(classInputStream);
-
-                        boolean methodFound = false;
-                        boolean fieldFound = false;
                         Set<String> unMappedMethodsAndFields = new HashSet<>();
                         Set<String> mappedMethodsAndFields = new HashSet<>();
-                        for (String methodOrField : methodsAndFields) {
-                            // Check methods
-                            for (CtMethod method : ctClass.getDeclaredMethods()) {
-                                if (method.getName().equals(methodOrField)) {
-                                    mappedMethodsAndFields.add(methodOrField);
-                                    methodFound = true;
-                                }
-                            }
 
-                            // Check fields
-                            for (CtField field : ctClass.getDeclaredFields()) {
-                                if (field.getName().equals(methodOrField)) {
-                                    mappedMethodsAndFields.add(methodOrField);
-                                    fieldFound = true;
-                                }
-                            }
-                            if (!methodFound && !fieldFound) {
-                                unMappedMethodsAndFields.add(methodOrField);
-                            }
-                            ctClass.detach(); // Release resources
-                        }
+                        mapReferences(methodsAndFields, ctClass, unMappedMethodsAndFields, mappedMethodsAndFields);
                         if (!mappedMethodsAndFields.isEmpty()) {
-                            Map mappedClasses = mappedMethods.getOrDefault(node, new HashMap<>());
-                            mappedClasses.put(className, mappedMethodsAndFields);
-                            mappedMethods.put(node, mappedClasses);
+                            Map mappedPriorReferences = mappedReferences.getOrDefault(dependency, new HashMap<>());
+                            mappedPriorReferences.put(className, mappedMethodsAndFields);
+                            mappedReferences.put(dependency, mappedPriorReferences);
 
                         }
                         if (!unMappedMethodsAndFields.isEmpty()) {
-                            Map unMappedClasses = unMappedMethods.getOrDefault(node, new HashMap<>());
-                            unMappedClasses.put(className, unMappedMethodsAndFields);
-                            unMappedMethods.put(node, unMappedClasses);
+                            verifyUnMappedReferences(parentReferencesToVerify, dependency, ctClass, unMappedMethodsAndFields, dependencyJarFile, mappedReferences);
                         }
-
+                        ctClass.detach();
                     }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
             }
+        }
+        return parentReferencesToVerify;
+    }
 
+    private static boolean trackNotFoundClasses(Map<Node, Map<String, Set<String>>> unMappedReferences, Node dependency, String className, Set<String> methodsAndFields, JarEntry jarEntry) {
+        if (jarEntry == null) {
+            // This will create a Linkage error if the class is not found, hence we need to track it
+            System.out.println("Class " + className + " not found in the jar.");
+            Map unMappedPriorReferences = unMappedReferences.getOrDefault(dependency, new HashMap<>());
+            unMappedPriorReferences.put(className, methodsAndFields);
+            unMappedReferences.put(dependency, unMappedPriorReferences);
+            return true;
+        }
+        return false;
+    }
+
+    private static void mapReferences(Set<String> methodsAndFields, CtClass ctClass, Set<String> unMappedMethodsAndFields, Set<String> mappedMethodsAndFields) {
+        boolean methodFound = false;
+        boolean fieldFound = false;
+
+        for (String methodOrField : methodsAndFields) {
+            // Check methods
+            for (CtMethod method : ctClass.getDeclaredMethods()) {
+                if (method.getName().equals(methodOrField)) {
+                    mappedMethodsAndFields.add(methodOrField);
+                    methodFound = true;
+                }
+            }
+
+            // Check fields
+            for (CtField field : ctClass.getDeclaredFields()) {
+                if (field.getName().equals(methodOrField)) {
+                    mappedMethodsAndFields.add(methodOrField);
+                    fieldFound = true;
+                }
+            }
+            if (!methodFound && !fieldFound) {
+                unMappedMethodsAndFields.add(methodOrField);
+            }
+        }
+    }
+
+    private static void verifyUnMappedReferences(List<ParentReferenceMap> parentReferencesToVerify, Node dependency, CtClass ctClass, Set<String> unMappedMethodsAndFields, JarFile jarFile, Map<Node, Map<String, Set<String>>> mappedReferences) throws NotFoundException, IOException {
+        //TODO: have to verify if the super class or the interface has declared the methods of fields
+        // these can be from different classes not belonging to the current Jar file as well
+
+        unMappedMethodsAndFields = iterativelySearchParents(dependency, unMappedMethodsAndFields, jarFile, mappedReferences, ctClass);
+
+        ParentReferenceMap parentReferenceMap = new ParentReferenceMap(dependency);
+//        parentReferenceMap.setMethodsAndFields(unMappedMethodsAndFields);
+//        if (superclass != null) {
+//            parentReferenceMap.addParentClasses(superclass.getName()); // todo: check if this is the full name
+//        }
+//        if (interfaces.length > 0) {
+//            for (CtClass inheritedInterface : interfaces) {
+//                parentReferenceMap.addParentClasses(inheritedInterface.getName()); // todo: check if this is the full name
+//            }
+//        }
+        parentReferencesToVerify.add(parentReferenceMap);
+    }
+
+    private static Set<String> iterativelySearchParents(Node dependency, Set<String> unMappedMethodsAndFields, JarFile jarFile, Map<Node, Map<String, Set<String>>> mappedReferences, CtClass currentClass) throws IOException, NotFoundException {
+        boolean validSuperClass = true;
+        boolean validInterfaces = true;
+
+        while ((validSuperClass || validInterfaces) && !unMappedMethodsAndFields.isEmpty()) {
+            CtClass superclass = currentClass.getSuperclass();
+            CtClass [] interfaces = currentClass.getInterfaces();
+
+            validSuperClass = (superclass != null || !"java.lang.Object".equals(superclass.getName()));
+
+            // Check if all interfaces are either null or java.lang.Object
+            validInterfaces = false;
+            for (CtClass interfaceType : interfaces) {
+                if (interfaceType != null && !"java.lang.Object".equals(interfaceType.getName())) {
+                    validInterfaces = true;
+                    break;
+                }
+            }
+            unMappedMethodsAndFields = verifyParentReferences(dependency, unMappedMethodsAndFields, jarFile, mappedReferences, superclass);
+            if (!unMappedMethodsAndFields.isEmpty()) {
+                for (CtClass interfaceType : interfaces) {
+                    unMappedMethodsAndFields = verifyParentReferences(dependency, unMappedMethodsAndFields, jarFile, mappedReferences, interfaceType);
+                    if (unMappedMethodsAndFields.isEmpty()) {
+                        break;
+                    }
+                }
+            }
+            currentClass = superclass;
+            // TODO: have to think about iteratively searching the interfaces
 
         }
+        return unMappedMethodsAndFields;
+    }
+
+    private static Set<String> verifyParentReferences(Node dependency, Set<String> unMappedMethodsAndFields, JarFile jarFile, Map<Node, Map<String, Set<String>>> mappedReferences, CtClass parentClass) throws IOException {
+        if (parentClass != null && !"java.lang.Object".equals(parentClass)) {
+            // check if the super type is in the same jar file if not pass it in to the Dependency tree
+            if (parentClass != null) {
+                String superClassEntryName = parentClass.getName().replace('.', '/') + ".class";
+                JarEntry superClassJarEntry = jarFile.getJarEntry(superClassEntryName);
+                if (superClassJarEntry != null) {
+                    unMappedMethodsAndFields = checkIfReferencesExist(dependency, superClassEntryName, unMappedMethodsAndFields, jarFile, mappedReferences, superClassJarEntry);
+                }
+            }
+        }
+        return unMappedMethodsAndFields;
+    }
+
+    private static Set<String> checkIfReferencesExist(Node node, String className, Set<String> unMappedMethodsAndFields, JarFile jarFile, Map<Node, Map<String, Set<String>>> mappedMethods, JarEntry jarEntry) throws IOException {
+        InputStream classInputStream = jarFile.getInputStream(jarEntry);
+        ClassPool pool = ClassPool.getDefault();
+        CtClass ctParentClass = pool.makeClass(classInputStream);
+        Set<String> unMappedReferencesInParent = new HashSet<>();
+        Set<String> mappedMethodsAndFields = new HashSet<>();
+
+        mapReferences(unMappedMethodsAndFields, ctParentClass, unMappedReferencesInParent, mappedMethodsAndFields);
+        if (!mappedMethodsAndFields.isEmpty()) {
+            Map mappedClasses = mappedMethods.getOrDefault(node, new HashMap<>());
+            mappedClasses.put(className, mappedMethodsAndFields);
+            mappedMethods.put(node, mappedClasses);
+        }
+        return unMappedReferencesInParent;
     }
 
     private void getDeepDepCalls(Map<Node, Set<String>> dependencyClasses, Map<String, Set<String>> callSitesInClient, Map<Node, Map<String, Set<String>>> invokedFunctions) {
@@ -154,7 +256,8 @@ public class DepUsage {
                 Node node = entry.getKey();
                 Set<String> libClasses = entry.getValue();
                 for (String libClass : libClasses) {
-                    if (libClass.equals(classSite)) { //TODO have to check if this works with Inner classes which hve the $ sign
+                    String formatLibClass = libClass.replace("/", ".");
+                    if (formatLibClass.equals(classSite)) { //TODO have to check if this works with Inner classes which have the $ sign
                         Map invokedCallAndMethods = invokedFunctions.getOrDefault(node, new HashMap<>());
                         invokedCallAndMethods.put(classSite, callSitesInClient.get(classSite));
                         invokedFunctions.put(node, invokedCallAndMethods);
@@ -177,7 +280,9 @@ public class DepUsage {
             while (iterator.hasNext()) {
                 String classOfSite = iterator.next();
                 for (String internalClass : internalClasses) {
-                    if (classOfSite.startsWith(internalClass) || (classOfSite.startsWith("[L") && classOfSite.startsWith("[L" + internalClass))) {
+                    // format the internal classes
+                    String formatInternalClass = internalClass.replace("/", ".");
+                    if (classOfSite.startsWith(formatInternalClass) || (classOfSite.startsWith("[L") && classOfSite.startsWith("[L" + formatInternalClass))) {
                         iterator.remove(); // Safely remove the entry
                         break; // Exit inner loop after removal
                     }
@@ -204,14 +309,14 @@ public class DepUsage {
                             .filter(f -> f.getName().endsWith(".class"))
                             .toList();
                     for (File classFile : classFiles) {
-                        Map<String, Set<String>> extractedCallSites = CallSiteFinder.extractCallSites(classFile.getAbsolutePath());
+                        Map<String, Set<String>> extractedCallSites = ReferenceFinder.extractReferences(classFile.getAbsolutePath());
                         for (Map.Entry<String, Set<String>> entry : extractedCallSites.entrySet()) {
                             String key = entry.getKey();
                             Set<String> newSet = entry.getValue();
 
                             classesAndCallSites.merge(
                                     key,
-                                    new HashSet<>(newSet), // Defensive copy
+                                    new HashSet<>(newSet),
                                     (existingSet, incomingSet) -> {
                                         existingSet.addAll(incomingSet);
                                         return existingSet;
