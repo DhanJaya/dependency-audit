@@ -164,7 +164,7 @@ public class GraphAnalyzer {
                         }
                     }
                     rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), referencesString.toString()});
-
+                    visitedEdges.add(edge);
                 }
             }
         }
