@@ -1,4 +1,4 @@
-package org.callsite;
+package org.reference;
 
 import javassist.NotFoundException;
 import javassist.bytecode.BadBytecode;
@@ -15,7 +15,7 @@ import java.util.Set;
 public class CallSiteFinderTest {
 
     @Test
-    public void testExtractClassDetails() throws IOException, NotFoundException, BadBytecode {
+    public void testExtractClassDetails() throws IOException, BadBytecode {
         String classFilePath = "testcallsite\\ClassLevel.class";
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
@@ -27,7 +27,7 @@ public class CallSiteFinderTest {
 
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
-            CallSiteFinder.detectCallSites(cf, methodCalls, fieldReferences);
+            ReferenceFinder.detectReferences(cf, methodCalls, fieldReferences);
             Assertions.assertEquals(6, methodCalls.size());
             // verify Implemented interface
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.exec.ProcessDestroyer"));
@@ -39,7 +39,7 @@ public class CallSiteFinderTest {
     }
 
     @Test
-    public void testExtractFieldDetails() throws IOException, NotFoundException, BadBytecode {
+    public void testExtractFieldDetails() throws IOException, BadBytecode {
         String classFilePath = "testcallsite\\InstanceAndClassFields.class";
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
@@ -52,7 +52,7 @@ public class CallSiteFinderTest {
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
 
-            CallSiteFinder.detectCallSites(cf, methodCalls, fieldReferences);
+            ReferenceFinder.detectReferences(cf, methodCalls, fieldReferences);
             Assertions.assertEquals(15, methodCalls.size());
             // verify class variable initialization
             Assertions.assertTrue(methodCalls.containsKey("org.slf4j.LoggerFactory"));
@@ -80,7 +80,7 @@ public class CallSiteFinderTest {
     }
 
     @Test
-    public void testExtractMethodDetails() throws IOException, NotFoundException, BadBytecode {
+    public void testExtractMethodDetails() throws IOException, BadBytecode {
         String classFilePath = "testcallsite\\MethodLevel.class";
         Map<String, Set<String>> methodCalls = new HashMap<>();
         Map<String, Set<String>> fieldReferences = new HashMap<>();
@@ -92,7 +92,7 @@ public class CallSiteFinderTest {
 
         try (InputStream inputStream = resource.openStream()) {
             ClassFile cf = new ClassFile(new DataInputStream(inputStream));
-            CallSiteFinder.detectCallSites(cf, methodCalls, fieldReferences);
+            ReferenceFinder.detectReferences(cf, methodCalls, fieldReferences);
             Assertions.assertEquals(33, methodCalls.size());
             // verify method signature exception
             Assertions.assertTrue(methodCalls.containsKey("org.apache.commons.cli.UnrecognizedOptionException"));

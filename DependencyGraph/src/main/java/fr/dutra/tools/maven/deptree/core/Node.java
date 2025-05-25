@@ -56,6 +56,8 @@ public class Node implements Serializable {
 
     private final List<Node> childNodes = new LinkedList<>();
 
+    private String jarName;
+
     public Node(
             final String groupId,
             final String artifactId,
@@ -123,6 +125,10 @@ public class Node implements Serializable {
         return this.childNodes;
     }
 
+    public void setJarName(String jarName) {
+        this.jarName = jarName;
+    }
+
     public boolean addChildNode(final Node o) {
         o.parent = this;
         return this.childNodes.add(o);
@@ -142,6 +148,10 @@ public class Node implements Serializable {
 
     public Node getLastChildNode() {
         return childNodes.getLast();
+    }
+
+    public String getDependencyName() {
+        return this.groupId + this.artifactId + this.version;
     }
 
     @Override

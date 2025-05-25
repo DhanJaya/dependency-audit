@@ -36,7 +36,7 @@ public class ReferenceFinder {
      *
      * @param cf              The ClassFile object of the analyzed class
      * @param methodCalls     collection to store all the class level invocations with its methods
-     * @param fieldReferences collection to store all the field level callsites
+     * @param fieldReferences collection to store all the field level references
      * @throws IOException
      * @throws NotFoundException
      */

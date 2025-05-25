@@ -1,5 +1,6 @@
 package org.dep.analyzer;
 
+import com.opencsv.CSVWriter;
 import fr.dutra.tools.maven.deptree.core.Node;
 import fr.dutra.tools.maven.deptree.core.ParseException;
 import fr.dutra.tools.maven.deptree.core.Parser;
@@ -17,6 +18,8 @@ import org.dep.model.NodeStyle;
 import org.dep.util.ColorGenerator;
 import org.dep.util.CommandExecutor;
 
+import java.io.IOException;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,7 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class GraphAnalyzer{
+public class GraphAnalyzer {
     public static final String DEPENDENCY_TREE_FILE = "DepTree.txt";
     private static final Logger logger = LoggerFactory.getLogger(GraphAnalyzer.class);
     public static Option INPUT = Option.builder()
@@ -58,18 +61,34 @@ public class GraphAnalyzer{
             .desc("The name of the output file")
             .build();
 
+    public static Option TEST_DEP = Option.builder()
+            .argName("test-scope")
+            .option("testscope")
+            .hasArg()
+            .required(false)
+            .desc("Graph should exclude test scope dependencies by default false")
+            .build();
+
+
     // To execute maven commands on the Windows OS need to update this to mvn.cmd
     public static String MAVEN_CMD = "mvn";
 
-    public static void main(String[] args) throws NotFoundException, IOException, BadBytecode {
+    public GraphAnalyzer() {
         String os = System.getProperty("os.name").toLowerCase();
         if (os.contains("win")) {
             MAVEN_CMD = "mvn.cmd"; // Windows command
         }
+    }
+
+    public static void main(String[] args) throws NotFoundException, IOException, BadBytecode {
+        GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
+
         Options options = new Options();
         options.addOption(INPUT);
         options.addOption(FORMAT);
         options.addOption(OUTPUT);
+        options.addOption(TEST_DEP);
+
         // create the parser
         CommandLineParser parser = new DefaultParser();
         // parse the command line arguments
@@ -77,12 +96,13 @@ public class GraphAnalyzer{
         String input;
         String format;
         String outputFile;
-        String excludeScope;
+        boolean excludeTestScope;
         try {
             line = parser.parse(options, args);
             input = line.getParsedOptionValue(INPUT);
             format = line.getParsedOptionValue(FORMAT);
             outputFile = line.getParsedOptionValue(OUTPUT);
+            excludeTestScope = Boolean.parseBoolean(line.getParsedOptionValue(TEST_DEP));
         } catch (org.apache.commons.cli.ParseException e) {
             HelpFormatter helpFormatter = new HelpFormatter();
             helpFormatter.printHelp("java -cp <path-to-build-jar>" + GraphAnalyzer.class.getName(), options);
@@ -95,22 +115,89 @@ public class GraphAnalyzer{
             logger.error(String.format("Invalid Maven project path: %s", input));
             return;
         }
+        graphAnalyzer.analyze(outputFile, excludeTestScope, projectPom);
+    }
+
+    private void analyze(String outputFile, boolean excludeTestScope, File projectPom) throws IOException, NotFoundException, BadBytecode {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
 
         DepUsage depUsage = new DepUsage();
-        depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD);
+        Map<Node, Map<String, Set<String>>> mappedReferences = new HashMap<>();
+        Map<String, Set<String>> allUnMappedReferences = new HashMap<>();
+        depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD, mappedReferences, allUnMappedReferences);
 
-
-        Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree);
+        // detect if functions of transitive dependencies or especially functionality form omitted dependencies are invoked
+        Map<Node, Map<String, Set<String>>> transitiveReferences = identifyTransitiveReferences(mappedReferences);
+        Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope);
         // generate colors
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"));
+        exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope);
+        // write CSV file with all the data
+        writeDataToCSV("AllDependencyData.csv", dependencyTree, mappedReferences);
     }
 
-    protected static Map<String, Integer> findDuplicates(Graph<Node, DefaultEdge> dependencyTree) {
+    private void writeDataToCSV(String fileName, Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<String>>> mappedReferences) {
+        BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
+        Set<DefaultEdge> visitedEdges = new HashSet<>();
+        List<String[]> rows = new ArrayList<>();
+        while (iterator.hasNext()) {
+            Node node = iterator.next();
+            // Iterate through edges connected to this vertex
+            for (DefaultEdge edge : dependencyTree.edgesOf(node)) {
+                if (!visitedEdges.contains(edge)) {
+                    Node currentNode = dependencyTree.getEdgeTarget(edge);
+                    StringBuilder referencesString = new StringBuilder();
+                    if (mappedReferences.containsKey(currentNode)) {
+
+                        Map<String, Set<String>> classAndReferences = mappedReferences.get(dependencyTree.getEdgeTarget(edge));
+                        // format string to display on arrow
+                        for (Map.Entry<String, Set<String>> entry : classAndReferences.entrySet()) {
+                            String className = entry.getKey();
+                            Set<String> references = entry.getValue();
+
+                            for (String reference : references) {
+                                referencesString.append(className + "." + reference + "\n");
+                            }
+                            if (references.isEmpty()) {
+                                referencesString.append(className + "\n");
+                            }
+                        }
+                    }
+                    rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), referencesString.toString()});
+
+                }
+            }
+        }
+
+        try (CSVWriter writer = new CSVWriter(new FileWriter(fileName))) {
+            String[] header = {"Dependency", "Dependency Scope", "Dependency Level", "Omitted", "Invoked References"};
+
+            writer.writeNext(header);
+            writer.writeAll(rows);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private Map<Node, Map<String, Set<String>>> identifyTransitiveReferences(Map<Node, Map<String, Set<String>>> mappedReferences) {
+        Map<Node, Map<String, Set<String>>> transitiveReferences = new HashMap<>();
+        for (Node dependency : mappedReferences.keySet()) {
+            // check dependency level and omitted status
+            if (dependency.getDepLevel() > 1) {
+                transitiveReferences.put(dependency, mappedReferences.get(dependency));
+            }
+        }
+        return transitiveReferences;
+    }
+
+    protected Map<String, Integer> findDuplicates(Graph<Node, DefaultEdge> dependencyTree, boolean removeTestDep) {
         List<Node> visitedNodes = new ArrayList<>();
         Map<String, Integer> duplicateDeps = new HashMap<>();
         for (Node node : dependencyTree.vertexSet()) {
+            if (removeTestDep && node.getScope() != null && node.getScope().equals("test")) {
+                continue;
+            }
             for (Node visitedNode : visitedNodes) {
                 // TODO: have to decide if we are adding the classifier
                 if (visitedNode.getGroupId().equals(node.getGroupId()) && visitedNode.getArtifactId().equals(node.getArtifactId())) {
@@ -130,7 +217,7 @@ public class GraphAnalyzer{
      * @param generateColors
      * @param file
      */
-    public static void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file) {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, boolean removeTestDep) {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
@@ -140,12 +227,18 @@ public class GraphAnalyzer{
             // Iterate through edges connected to this vertex
             for (DefaultEdge edge : dependencyTree.edgesOf(node)) {
                 if (!visitedEdges.contains(edge)) {
+                    if (removeTestDep && dependencyTree.getEdgeTarget(edge).getScope() != null && dependencyTree.getEdgeTarget(edge).getScope().equals("test")) {
+                        continue;
+                    }
                     visitedEdges.add(edge);
                     mermaid
                             .append("\t")
                             .append(formatDepName(dependencyTree.getEdgeSource(edge), generateColors));
+                    // append the functions of the transitive dependencies used
                     if (dependencyTree.getEdgeTarget(edge).getScope() != null && dependencyTree.getEdgeTarget(edge).getScope().equals("test")) {
                         mermaid.append(" -. test .-> ");
+                    } else if (transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
+                        includeTransitiveReferences(dependencyTree, transitiveDepAndReferences, mermaid, edge);
                     } else {
                         mermaid.append(" --> ");
                     }
@@ -154,7 +247,15 @@ public class GraphAnalyzer{
                 }
             }
         }
-        // generateColors.forEach((dep, colors) -> colors.getGeneratedColors().forEach(color -> mermaid.append("style " + color + " fill:" + color + newLine)));
+        appendColorsToGraph(generateColors, newLine, mermaid);
+        try {
+            Files.write(file, mermaid.toString().getBytes());
+        } catch (IOException e) {
+            logger.error(String.format("failed to create the dependency graph file %s", file));
+        }
+    }
+
+    private void appendColorsToGraph(Map<String, ColorStyleTracker> generateColors, String newLine, StringBuilder mermaid) {
         generateColors.forEach((dep, colors) -> {
             List<String> generatedColors = colors.getGeneratedColors();
             Map<Integer, NodeStyle> nodeStyles = colors.getNodeStyle(); // HashMap<Integer, String>
@@ -170,14 +271,28 @@ public class GraphAnalyzer{
                 mermaid.append(styleString).append(newLine);
             }
         });
-        try {
-            Files.write(file, mermaid.toString().getBytes());
-        } catch (IOException e) {
-            logger.error(String.format("failed to create the dependency graph file %s", file));
-        }
     }
 
-    private static String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors) {
+    private void includeTransitiveReferences(Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, StringBuilder mermaid, DefaultEdge edge) {
+        // get the references used and display it on teh node edge
+        StringBuilder referencesString = new StringBuilder();
+        Map<String, Set<String>> transitiveReferences = transitiveDepAndReferences.get(dependencyTree.getEdgeTarget(edge));
+        // format string to display on arrow
+        for (Map.Entry<String, Set<String>> entry : transitiveReferences.entrySet()) {
+            String className = entry.getKey();
+            Set<String> references = entry.getValue();
+
+            for (String reference : references) {
+                referencesString.append(className + "." + reference + "\\n");
+            }
+            if (references.isEmpty()) {
+                referencesString.append(className + "\\n");
+            }
+        }
+        mermaid.append("-. \"" + referencesString + "\" .-> ");
+    }
+
+    private String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors) {
         String depName = String.format("%s:%s", node.getGroupId(), node.getArtifactId());
 
         if (generateColors.containsKey(depName)) {
@@ -232,7 +347,7 @@ public class GraphAnalyzer{
         return String.format("L%s-%s:%s-%s", node.getDepLevel(), node.getGroupId(), node.getArtifactId(), node.getVersion());
     }
 
-    protected static Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {
+    protected Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {
         try {
             if (CommandExecutor.executeCommand(String.format("%s dependency:tree -DoutputFile=%s -Dverbose", MAVEN_CMD, DEPENDENCY_TREE_FILE), projectDir).contains("BUILD SUCCESS")) {
                 // Read json file to extract the dependency tree
@@ -252,7 +367,7 @@ public class GraphAnalyzer{
         throw new RuntimeException("Error occurred while generating the dependency tree");
     }
 
-    protected static Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile) {
+    protected Graph<Node, DefaultEdge> readDependencyTree(File depTreeFile) {
         Reader r = null;
         try {
             r = new BufferedReader(new InputStreamReader(new FileInputStream(depTreeFile), StandardCharsets.UTF_8));
