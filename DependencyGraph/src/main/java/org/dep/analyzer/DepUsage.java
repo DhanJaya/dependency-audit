@@ -44,7 +44,7 @@ public class DepUsage extends Object{
                 //TODO: do we need to keep track of the files that could not be extracted
                 Set<String> externalFiles = getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
                 // include the java classes as well, so that the standard java class will not be marked as unmapped references
-                List<String> standardJavaClasses = getJavaClasses();
+              //  List<String> standardJavaClasses = getJavaClasses();
 
                 if (buildClientProject(projectDir, mvnCmd)) {
                     String projectTargetFolder = projectDir + TARGET;
@@ -61,14 +61,14 @@ public class DepUsage extends Object{
                         excludeInternalCallSites(callSitesInClientTestCode, clientClasses);
 
                         //iteratively search for the invoked references in the dep classes
-                        checkReferencesInDep(allClassesInDep, callSitesInClientSourceCode, dependencyDirectory, mappedReferences, allUnMappedReferences, standardJavaClasses);
+                        checkReferencesInDep(allClassesInDep, callSitesInClientSourceCode, dependencyDirectory, mappedReferences, allUnMappedReferences);
                     }
                 }
             }
         }
     }
 
-    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<String>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<String>>> mappedReferences, Map<String, Set<String>> allUnMappedReferences, List<String> standardJavaClasses) throws NotFoundException {
+    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<String>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<String>>> mappedReferences, Map<String, Set<String>> allUnMappedReferences) throws NotFoundException {
         ClassPool classPool = ClassPool.getDefault();
         if (depDirectory.isDirectory()) {
             File[] jarFiles = depDirectory.listFiles((dir, name) -> name.endsWith(".jar"));
