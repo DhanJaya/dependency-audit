@@ -151,7 +151,7 @@ public class Node implements Serializable {
     }
 
     public String getDependencyName() {
-        return this.groupId + this.artifactId + this.version;
+        return this.groupId + ":" + this.artifactId + ":" + this.version;
     }
 
     @Override

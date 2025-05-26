@@ -118,7 +118,7 @@ public class GraphAnalyzer {
         graphAnalyzer.analyze(outputFile, excludeTestScope, projectPom);
     }
 
-    private void analyze(String outputFile, boolean excludeTestScope, File projectPom) throws IOException, NotFoundException, BadBytecode {
+    public void analyze(String outputFile, boolean excludeTestScope, File projectPom) throws IOException, NotFoundException, BadBytecode {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
 
         DepUsage depUsage = new DepUsage();
