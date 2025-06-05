@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
@@ -69,6 +70,13 @@ public class GraphAnalyzer {
             .desc("Graph should exclude test scope dependencies by default false")
             .build();
 
+    public static Option TRANSITIVE_FUNC = Option.builder()
+            .argName("transitive-func")
+            .option("transitivefunctions")
+            .hasArg()
+            .required(false)
+            .desc("Display used transitive functions in the graph by default false")
+            .build();
 
     // To execute maven commands on the Windows OS need to update this to mvn.cmd
     public static String MAVEN_CMD = "mvn";
@@ -88,6 +96,7 @@ public class GraphAnalyzer {
         options.addOption(FORMAT);
         options.addOption(OUTPUT);
         options.addOption(TEST_DEP);
+        options.addOption(TRANSITIVE_FUNC);
 
         // create the parser
         CommandLineParser parser = new DefaultParser();
@@ -97,12 +106,14 @@ public class GraphAnalyzer {
         String format;
         String outputFile;
         boolean excludeTestScope;
+        boolean showTransitiveFunc;
         try {
             line = parser.parse(options, args);
             input = line.getParsedOptionValue(INPUT);
             format = line.getParsedOptionValue(FORMAT);
             outputFile = line.getParsedOptionValue(OUTPUT);
             excludeTestScope = Boolean.parseBoolean(line.getParsedOptionValue(TEST_DEP));
+            showTransitiveFunc = Boolean.parseBoolean(line.getParsedOptionValue(TRANSITIVE_FUNC));
         } catch (org.apache.commons.cli.ParseException e) {
             HelpFormatter helpFormatter = new HelpFormatter();
             helpFormatter.printHelp("java -cp <path-to-build-jar>" + GraphAnalyzer.class.getName(), options);
@@ -115,10 +126,10 @@ public class GraphAnalyzer {
             logger.error(String.format("Invalid Maven project path: %s", input));
             return;
         }
-        graphAnalyzer.analyze(outputFile, excludeTestScope, projectPom);
+        graphAnalyzer.analyze(outputFile, excludeTestScope, showTransitiveFunc, projectPom);
     }
 
-    public void analyze(String outputFile, boolean excludeTestScope, File projectPom) throws IOException, NotFoundException, BadBytecode {
+    public void analyze(String outputFile, boolean excludeTestScope, boolean showTransitiveFunc, File projectPom) throws IOException, NotFoundException, BadBytecode {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
 
         DepUsage depUsage = new DepUsage();
@@ -131,7 +142,7 @@ public class GraphAnalyzer {
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope);
         // generate colors
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope);
+        exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope, showTransitiveFunc);
         // write CSV file with all the data
         writeDataToCSV("AllDependencyData.csv", dependencyTree, mappedReferences);
     }
@@ -217,13 +228,20 @@ public class GraphAnalyzer {
      * @param generateColors
      * @param file
      */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, boolean removeTestDep) {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc) {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
+        List<Integer> linkNumbers = new ArrayList<>();
+        int counterForEdges = 0;
+        // keep track of the initial node to link transitive dependencies
+        Node rootNode = null;
         while (iterator.hasNext()) {
             Node node = iterator.next();
+            if (rootNode == null) {
+                rootNode = node;
+            }
             // Iterate through edges connected to this vertex
             for (DefaultEdge edge : dependencyTree.edgesOf(node)) {
                 if (!visitedEdges.contains(edge)) {
@@ -237,17 +255,25 @@ public class GraphAnalyzer {
                     // append the functions of the transitive dependencies used
                     if (dependencyTree.getEdgeTarget(edge).getScope() != null && dependencyTree.getEdgeTarget(edge).getScope().equals("test")) {
                         mermaid.append(" -. test .-> ");
-                    } else if (transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
-                        includeTransitiveReferences(dependencyTree, transitiveDepAndReferences, mermaid, edge);
-                    } else {
+                    }  else {
                         mermaid.append(" --> ");
                     }
                     mermaid.append(formatDepName(dependencyTree.getEdgeTarget(edge), generateColors))
                             .append(newLine);
+                    ++ counterForEdges;
+                    if (transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
+                        //  includeTransitiveReferences(dependencyTree, transitiveDepAndReferences, mermaid, edge);
+                        includeTransitiveReference(rootNode, dependencyTree.getEdgeTarget(edge), transitiveDepAndReferences, generateColors, mermaid, showTransitiveFunc);
+                        linkNumbers.add(counterForEdges);
+                        ++ counterForEdges;
+                    }
                 }
+
             }
         }
+        // append link style to the graph
         appendColorsToGraph(generateColors, newLine, mermaid);
+        appendTransitiveLinkColor(linkNumbers, newLine, mermaid);
         try {
             Files.write(file, mermaid.toString().getBytes());
         } catch (IOException e) {
@@ -273,23 +299,43 @@ public class GraphAnalyzer {
         });
     }
 
-    private void includeTransitiveReferences(Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, StringBuilder mermaid, DefaultEdge edge) {
-        // get the references used and display it on teh node edge
-        StringBuilder referencesString = new StringBuilder();
-        Map<String, Set<String>> transitiveReferences = transitiveDepAndReferences.get(dependencyTree.getEdgeTarget(edge));
-        // format string to display on arrow
-        for (Map.Entry<String, Set<String>> entry : transitiveReferences.entrySet()) {
-            String className = entry.getKey();
-            Set<String> references = entry.getValue();
-
-            for (String reference : references) {
-                referencesString.append(className + "." + reference + "\\n");
-            }
-            if (references.isEmpty()) {
-                referencesString.append(className + "\\n");
-            }
+    private void appendTransitiveLinkColor(List<Integer> linkNumbers, String newLine, StringBuilder mermaid) {
+        if (!linkNumbers.isEmpty()) {
+            String linkNum = linkNumbers.stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(","));
+            mermaid.append("linkStyle " + linkNum + " stroke:red");
         }
-        mermaid.append("-. \"" + referencesString + "\" .-> ");
+    }
+
+    private void includeTransitiveReference(Node rootNode, Node transitiveDep, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, Map<String, ColorStyleTracker> generateColors, StringBuilder mermaid, boolean showTransitiveFunc) {
+        String newLine = System.lineSeparator();
+        // get the references used and display it on teh node edge
+        mermaid
+                .append("\t")
+                .append(formatDepName(rootNode, generateColors));
+        StringBuilder referencesString = new StringBuilder();
+        if (showTransitiveFunc) {
+            Map<String, Set<String>> transitiveReferences = transitiveDepAndReferences.get(transitiveDep);
+            // format string to display on arrow
+            for (Map.Entry<String, Set<String>> entry : transitiveReferences.entrySet()) {
+                String className = entry.getKey();
+                Set<String> references = entry.getValue();
+
+                for (String reference : references) {
+                    referencesString.append(className + "." + reference).append(newLine);
+                }
+                if (references.isEmpty()) {
+                    referencesString.append(className).append(newLine);
+                }
+            }
+            mermaid.append("-- \"" + referencesString + "\" --> ");
+        } else {
+            mermaid.append(" --> ");
+        }
+
+        mermaid.append(formatDepName(transitiveDep, generateColors))
+                .append(newLine);
     }
 
     private String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors) {
