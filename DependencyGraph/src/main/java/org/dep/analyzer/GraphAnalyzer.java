@@ -15,6 +15,7 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.dep.model.ColorStyleTracker;
 import org.dep.model.NodeStyle;
+import org.dep.model.Reference;
 import org.dep.util.ColorGenerator;
 import org.dep.util.CommandExecutor;
 
@@ -133,12 +134,12 @@ public class GraphAnalyzer {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
 
         DepUsage depUsage = new DepUsage();
-        Map<Node, Map<String, Set<String>>> mappedReferences = new HashMap<>();
-        Map<String, Set<String>> allUnMappedReferences = new HashMap<>();
+        Map<Node, Map<String, Set<Reference>>> mappedReferences = new HashMap<>();
+        Map<String, Set<Reference>> allUnMappedReferences = new HashMap<>();
         depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD, mappedReferences, allUnMappedReferences);
 
         // detect if functions of transitive dependencies or especially functionality form omitted dependencies are invoked
-        Map<Node, Map<String, Set<String>>> transitiveReferences = identifyTransitiveReferences(mappedReferences);
+        Map<Node, Map<String, Set<Reference>>> transitiveReferences = identifyTransitiveReferences(mappedReferences);
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope);
         // generate colors
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
@@ -147,7 +148,7 @@ public class GraphAnalyzer {
         writeDataToCSV("AllDependencyData.csv", dependencyTree, mappedReferences);
     }
 
-    private void writeDataToCSV(String fileName, Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<String>>> mappedReferences) {
+    private void writeDataToCSV(String fileName, Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences) {
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
         List<String[]> rows = new ArrayList<>();
@@ -160,15 +161,18 @@ public class GraphAnalyzer {
                     StringBuilder referencesString = new StringBuilder();
                     if (mappedReferences.containsKey(currentNode)) {
 
-                        Map<String, Set<String>> classAndReferences = mappedReferences.get(dependencyTree.getEdgeTarget(edge));
+                        Map<String, Set<Reference>> classAndReferences = mappedReferences.get(dependencyTree.getEdgeTarget(edge));
                         // format string to display on arrow
-                        for (Map.Entry<String, Set<String>> entry : classAndReferences.entrySet()) {
+                        for (Map.Entry<String, Set<Reference>> entry : classAndReferences.entrySet()) {
                             String className = entry.getKey();
-                            Set<String> references = entry.getValue();
+                            Set<Reference> references = entry.getValue();
 
-                            for (String reference : references) {
-                                referencesString.append(className + "." + reference + "\n");
-                            }
+                            for (Reference reference : references) {
+                                if (reference.getInstruction() != null) {
+                                    referencesString.append(className + "." + reference.getName() + " -> "+ reference.getInstruction() +"\n");
+                                } else {
+                                    referencesString.append(className + "." + reference.getName() + "\n");
+                                }                            }
                             if (references.isEmpty()) {
                                 referencesString.append(className + "\n");
                             }
@@ -191,8 +195,8 @@ public class GraphAnalyzer {
     }
 
 
-    private Map<Node, Map<String, Set<String>>> identifyTransitiveReferences(Map<Node, Map<String, Set<String>>> mappedReferences) {
-        Map<Node, Map<String, Set<String>>> transitiveReferences = new HashMap<>();
+    private Map<Node, Map<String, Set<Reference>>> identifyTransitiveReferences(Map<Node, Map<String, Set<Reference>>> mappedReferences) {
+        Map<Node, Map<String, Set<Reference>>> transitiveReferences = new HashMap<>();
         for (Node dependency : mappedReferences.keySet()) {
             // check dependency level and omitted status
             if (dependency.getDepLevel() > 1) {
@@ -228,7 +232,7 @@ public class GraphAnalyzer {
      * @param generateColors
      * @param file
      */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc) {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc) {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
@@ -308,7 +312,7 @@ public class GraphAnalyzer {
         }
     }
 
-    private void includeTransitiveReference(Node rootNode, Node transitiveDep, Map<Node, Map<String, Set<String>>> transitiveDepAndReferences, Map<String, ColorStyleTracker> generateColors, StringBuilder mermaid, boolean showTransitiveFunc) {
+    private void includeTransitiveReference(Node rootNode, Node transitiveDep, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, Map<String, ColorStyleTracker> generateColors, StringBuilder mermaid, boolean showTransitiveFunc) {
         String newLine = System.lineSeparator();
         // get the references used and display it on teh node edge
         mermaid
@@ -316,14 +320,23 @@ public class GraphAnalyzer {
                 .append(formatDepName(rootNode, generateColors));
         StringBuilder referencesString = new StringBuilder();
         if (showTransitiveFunc) {
-            Map<String, Set<String>> transitiveReferences = transitiveDepAndReferences.get(transitiveDep);
+            Map<String, Set<Reference>> transitiveReferences = transitiveDepAndReferences.get(transitiveDep);
             // format string to display on arrow
-            for (Map.Entry<String, Set<String>> entry : transitiveReferences.entrySet()) {
+            for (Map.Entry<String, Set<Reference>> entry : transitiveReferences.entrySet()) {
                 String className = entry.getKey();
-                Set<String> references = entry.getValue();
+                Set<Reference> references = entry.getValue();
 
-                for (String reference : references) {
-                    referencesString.append(className + "." + reference).append(newLine);
+                for (Reference reference : references) {
+                    referencesString.append(className)
+                            .append(".")
+                            .append(reference.getName());
+
+                    String instruction = reference.getInstruction();
+                    if (instruction != null && !instruction.isEmpty()) {
+                        referencesString.append(instruction);
+                    }
+
+                    referencesString.append(newLine);
                 }
                 if (references.isEmpty()) {
                     referencesString.append(className).append(newLine);
