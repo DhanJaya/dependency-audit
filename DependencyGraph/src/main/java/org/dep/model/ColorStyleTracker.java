@@ -10,10 +10,7 @@ public class ColorStyleTracker {
 
     private List<String> generatedColors;
     private int indexAssigned;
-
-    private Map<Integer, NodeStyle> nodeStyle = new HashMap<>();
-
-    private Map<Node, String> assignedNodeColor = new HashMap<>();
+    private Map<Node, NodeStyle> nodeStyles = new HashMap<>();
 
     public ColorStyleTracker(List<String> generatedColors, int indexAssigned) {
         this.generatedColors = generatedColors;
@@ -35,27 +32,12 @@ public class ColorStyleTracker {
         this.indexAssigned = indexAssigned;
     }
 
-    public void addNode(Node node, String color) {
-        this.assignedNodeColor.put(node, color);
+    public Map<Node, NodeStyle> getNodeStyles() {
+        return nodeStyles;
     }
 
-    public Map<Node, String> getAssignedNodes() {
-        return assignedNodeColor;
+       public void addNodeStyle(Node node, NodeStyle nodeStyle) {
+        this.nodeStyles.put(node, nodeStyle);
     }
 
-    public Map<Integer, NodeStyle> getNodeStyle() {
-        return nodeStyle;
-    }
-
-    public void addNodeStyle(int index, NodeStyle nodeStyle) {
-        this.nodeStyle.put(index, nodeStyle);
-    }
-
-    public Map<Node, String> getAssignedNodeColor() {
-        return assignedNodeColor;
-    }
-
-    public void setAssignedNodeColor(Map<Node, String> assignedNodeColor) {
-        this.assignedNodeColor = assignedNodeColor;
-    }
 }

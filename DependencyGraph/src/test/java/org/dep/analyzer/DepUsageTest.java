@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,7 +20,7 @@ import java.util.Set;
 public class DepUsageTest {
 
     @Test
-    public void testExtractDependencyTree() throws NotFoundException, IOException, BadBytecode {
+    public void testExtractDependencyTree() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         String mvnCmd = "mvn";
         String os = System.getProperty("os.name").toLowerCase();
         if (os.contains("win")) {

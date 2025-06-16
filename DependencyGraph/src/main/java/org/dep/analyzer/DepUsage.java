@@ -4,6 +4,7 @@ import fr.dutra.tools.maven.deptree.core.Node;
 import javassist.*;
 import javassist.bytecode.BadBytecode;
 import org.dep.model.Reference;
+import org.dep.util.StandardJavaReferences;
 import org.reference.ReferenceFinder;
 import org.dep.util.CommandExecutor;
 import org.jgrapht.Graph;
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.jar.JarEntry;
@@ -24,7 +26,7 @@ import java.util.stream.Stream;
 
 import static org.dep.util.Helper.createFolderIfNotExists;
 
-public class DepUsage extends Object{
+public class DepUsage {
 
     private static final Logger logger = LoggerFactory.getLogger(DepUsage.class);
     private static final String COPY_DEPENDENCY_FOLDER = "/DepCopied";
@@ -33,7 +35,7 @@ public class DepUsage extends Object{
     private static final String TEST_CLASSES = "/test-classes";
     private final static String META_INF_FILE = "META-INF";
 
-    public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode {
+    public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode, URISyntaxException {
         if (copyProjectDependencies(projectDir, mvnCmd)) {
             Set<String> clientClasses = findJavaClassesInDirectory(projectDir);
             // get classes in dependencies jar files
@@ -41,11 +43,8 @@ public class DepUsage extends Object{
                 File dependencyDirectory = new File(projectDir + COPY_DEPENDENCY_FOLDER);
                 // a map with all the classes and the jarfiles they are linked to
                 Map<String, List<Node>> allClassesInDep = new HashMap<>();
-               // Map<Node, Set<String>> dependencyClasses = new LinkedHashMap<>();
                 //TODO: do we need to keep track of the files that could not be extracted
                 Set<String> externalFiles = getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
-                // include the java classes as well, so that the standard java class will not be marked as unmapped references
-              //  List<String> standardJavaClasses = getJavaClasses();
 
                 if (buildClientProject(projectDir, mvnCmd)) {
                     String projectTargetFolder = projectDir + TARGET;
@@ -55,21 +54,23 @@ public class DepUsage extends Object{
                         // get classes in target folder
                         File classesDirectory = new File(projectTargetFolder + CLASSES);
                         File testClassesDirectory = new File(projectTargetFolder + TEST_CLASSES);
-                        Map<String, Set<Reference>> callSitesInClientSourceCode = getCallSitesToVerify(classesDirectory);
-                        Map<String, Set<Reference>> callSitesInClientTestCode = getCallSitesToVerify(testClassesDirectory);
-                        // TODO: filter the client related classes and external classes
-                        excludeInternalCallSites(callSitesInClientSourceCode, clientClasses);
-                        excludeInternalCallSites(callSitesInClientTestCode, clientClasses);
-
-                        //iteratively search for the invoked references in the dep classes // TODO not testing the test code
-                        checkReferencesInDep(allClassesInDep, callSitesInClientSourceCode, dependencyDirectory, mappedReferences, allUnMappedReferences);
+                        Map<String, Set<Reference>> referencesInClientCode = new HashMap<>();
+                        getCallSitesToVerify(classesDirectory, referencesInClientCode);
+                        getCallSitesToVerify(testClassesDirectory, referencesInClientCode);
+                        // filter the client related classes and external classes
+                        excludeInternalCallSites(referencesInClientCode, clientClasses);
+                        //iteratively search for the invoked references in the dep classes
+                        checkReferencesInDep(allClassesInDep, referencesInClientCode, dependencyDirectory, mappedReferences, allUnMappedReferences);
                     }
                 }
             }
         }
     }
 
-    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException {
+    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException, URISyntaxException {
+        // include the java classes as well, so that the standard java class will not be marked as unmapped references
+        Map<String, Set<String>> standardJavaClasses = StandardJavaReferences.loadStandardJavaReferences();
+
         ClassPool classPool = ClassPool.getDefault();
         if (depDirectory.isDirectory()) {
             File[] jarFiles = depDirectory.listFiles((dir, name) -> name.endsWith(".jar"));
@@ -91,7 +92,7 @@ public class DepUsage extends Object{
                 }
                 if (!unMappedReferences.isEmpty()) {
 
-                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool);
+                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool, standardJavaClasses);
                 }
                 if (!unMappedReferences.isEmpty()) {
                     allUnMappedReferences.put(referencedClass, unMappedReferences);
@@ -100,25 +101,26 @@ public class DepUsage extends Object{
         }
     }
 
-    private void iterativelySearchParentClasses(Map<String, List<Node>> allClassesInDep, Map<Node, Map<String, Set<Reference>>> mappedReferences, Set<Reference> referencesToMap, List<Node> dependenciesWithClass, List<String> parentClasses, ClassPool classPool) throws NotFoundException {
+    private void iterativelySearchParentClasses(Map<String, List<Node>> allClassesInDep, Map<Node, Map<String, Set<Reference>>> mappedReferences, Set<Reference> referencesToMap, List<Node> dependenciesWithClass, List<String> parentClasses, ClassPool classPool, Map<String, Set<String>> standardJavaClasses) throws NotFoundException {
         if (!parentClasses.isEmpty() && !referencesToMap.isEmpty()) {
             for (String parentClass : parentClasses) {
                 if (allClassesInDep.containsKey(parentClass)) {
                     List<Node> dependenciesWithParentClass = allClassesInDep.get(parentClass);
                     List<String> superParentClasses = new ArrayList<>();
                     if (dependenciesWithParentClass.size() > 0 && !referencesToMap.isEmpty()) {
+                        // We only consider the first match with the node if not found it will be highlighted in the graph
                         mapReferenceWithDep(dependenciesWithClass.get(0), parentClass, referencesToMap, mappedReferences, superParentClasses, classPool);
                     }
                     if (!referencesToMap.isEmpty()) {
-                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, referencesToMap, dependenciesWithClass, superParentClasses, classPool);
+                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, referencesToMap, dependenciesWithClass, superParentClasses, classPool, standardJavaClasses);
                     }
                 } else {
-                    // TODO: use class.forName("classname") to get the class object, this could help with the inbuilt java methods since they might not be mapped
-                    try {
-                        Class unmappedClass = Class.forName(parentClass);
-                        unmappedClass.getMethods();
-                    } catch (ClassNotFoundException e) {
-                        throw new RuntimeException(e);
+                    // check if it is a Standard Java Reference
+                    if (standardJavaClasses.containsKey(parentClass)) {
+                        Set<String> classReferences = standardJavaClasses.get(parentClass);
+                        if (!referencesToMap.isEmpty()) {
+                            referencesToMap.removeIf(methodOrField -> classReferences.stream().anyMatch(ref -> ref.equals(methodOrField.getName())));
+                        }
                     }
                 }
 
@@ -145,7 +147,6 @@ public class DepUsage extends Object{
             }
             if (!references.isEmpty()) {
                 // extract the superclass and interfaces
-
                 try {
                     CtClass superclass = ctClass.getSuperclass();
                     if (superclass != null && !"java.lang.Object".equals(superclass.getName())) {
@@ -196,7 +197,6 @@ public class DepUsage extends Object{
                 }
             }
 
-
             // Check fields
             if (!referenceFound) { // Only check fields if method wasn't found
                 for (CtField field : ctClass.getFields()) { // TODO: check if this should be declared methods
@@ -235,7 +235,7 @@ public class DepUsage extends Object{
     /**
      * Exclude the internal classes from the class sites
      *
-     * @param  references    all references which needs to be filtered
+     * @param references      all references which needs to be filtered
      * @param internalClasses internal classes to be filtered out
      */
     private void excludeInternalCallSites(Map<String, Set<Reference>> references, Set<String> internalClasses) {
@@ -263,8 +263,7 @@ public class DepUsage extends Object{
      * @return A map containing internal and external call sites used in the project
      * @throws IOException An exception will occur if the find call site method returns an exception while process
      */
-    private Map<String, Set<Reference>> getCallSitesToVerify(File classesDirectory) throws IOException, NotFoundException, BadBytecode {
-        Map<String, Set<Reference>> classesAndCallSites = new HashMap<>();
+    private void getCallSitesToVerify(File classesDirectory, Map<String, Set<Reference>> classesAndCallSites) throws IOException, BadBytecode {
         if (classesDirectory.exists()) {
             File[] classDirectories = classesDirectory.listFiles(File::isDirectory);
             for (File projectClassesDir : classDirectories) {
@@ -293,7 +292,6 @@ public class DepUsage extends Object{
                 }
             }
         }
-        return classesAndCallSites;
     }
 
     /**

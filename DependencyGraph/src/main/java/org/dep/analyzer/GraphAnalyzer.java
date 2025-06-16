@@ -14,7 +14,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.dep.model.ColorStyleTracker;
-import org.dep.model.NodeStyle;
 import org.dep.model.Reference;
 import org.dep.util.ColorGenerator;
 import org.dep.util.CommandExecutor;
@@ -22,13 +21,14 @@ import org.dep.util.CommandExecutor;
 import java.io.IOException;
 
 import java.io.*;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
-import java.util.stream.Collectors;
 
+import org.dep.util.HTMLReport;
+import org.dep.util.MermaidFileGenerator;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.traverse.BreadthFirstIterator;
@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 public class GraphAnalyzer {
     public static final String DEPENDENCY_TREE_FILE = "DepTree.txt";
     private static final Logger logger = LoggerFactory.getLogger(GraphAnalyzer.class);
+    public static String projectName = null;
     public static Option INPUT = Option.builder()
             .argName("aUrlOrPOMFile")
             .option("input")
@@ -89,7 +90,7 @@ public class GraphAnalyzer {
         }
     }
 
-    public static void main(String[] args) throws NotFoundException, IOException, BadBytecode {
+    public static void main(String[] args) throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
 
         Options options = new Options();
@@ -130,9 +131,11 @@ public class GraphAnalyzer {
         graphAnalyzer.analyze(outputFile, excludeTestScope, showTransitiveFunc, projectPom);
     }
 
-    public void analyze(String outputFile, boolean excludeTestScope, boolean showTransitiveFunc, File projectPom) throws IOException, NotFoundException, BadBytecode {
+    public void analyze(String outputFile, boolean excludeTestScope, boolean showTransitiveFunc, File projectPom) throws IOException, NotFoundException, BadBytecode, URISyntaxException {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
-
+        BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
+        Node rootNode = iterator.next();
+        projectName = rootNode.getGroupId()+ "_" + rootNode.getArtifactId();
         DepUsage depUsage = new DepUsage();
         Map<Node, Map<String, Set<Reference>>> mappedReferences = new HashMap<>();
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap<>();
@@ -143,7 +146,12 @@ public class GraphAnalyzer {
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope);
         // generate colors
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope, showTransitiveFunc);
+        Map<Node, String> hrefTransitiveMap = new HashMap<>();
+        MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope, showTransitiveFunc, hrefTransitiveMap);
+
+        // generate the html
+        HTMLReport.generateHTML(dependencyTree, mappedReferences, hrefTransitiveMap);
         // write CSV file with all the data
         writeDataToCSV("AllDependencyData.csv", dependencyTree, mappedReferences);
     }
@@ -169,12 +177,13 @@ public class GraphAnalyzer {
 
                             for (Reference reference : references) {
                                 if (reference.getInstruction() != null) {
-                                    referencesString.append(className + "." + reference.getName() + " -> "+ reference.getInstruction() +"\n");
+                                    referencesString.append("->").append(reference.getInstruction()).append(className).append("::").append(reference.getName()).append("\n");
                                 } else {
-                                    referencesString.append(className + "." + reference.getName() + "\n");
-                                }                            }
+                                    referencesString.append(className).append("::").append(reference.getName()).append("\n");
+                                }
+                            }
                             if (references.isEmpty()) {
-                                referencesString.append(className + "\n");
+                                referencesString.append(className).append("\n");
                             }
                         }
                     }
@@ -223,187 +232,6 @@ public class GraphAnalyzer {
             visitedNodes.add(node);
         }
         return duplicateDeps;
-    }
-
-    /**
-     * Generate the mermaid file for the passed dependency tree at the given path location
-     *
-     * @param dependencyTree
-     * @param generateColors
-     * @param file
-     */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc) {
-        String newLine = System.lineSeparator();
-        StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
-        BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
-        Set<DefaultEdge> visitedEdges = new HashSet<>();
-        List<Integer> linkNumbers = new ArrayList<>();
-        int counterForEdges = 0;
-        // keep track of the initial node to link transitive dependencies
-        Node rootNode = null;
-        while (iterator.hasNext()) {
-            Node node = iterator.next();
-            if (rootNode == null) {
-                rootNode = node;
-            }
-            // Iterate through edges connected to this vertex
-            for (DefaultEdge edge : dependencyTree.edgesOf(node)) {
-                if (!visitedEdges.contains(edge)) {
-                    if (removeTestDep && dependencyTree.getEdgeTarget(edge).getScope() != null && dependencyTree.getEdgeTarget(edge).getScope().equals("test")) {
-                        continue;
-                    }
-                    visitedEdges.add(edge);
-                    mermaid
-                            .append("\t")
-                            .append(formatDepName(dependencyTree.getEdgeSource(edge), generateColors));
-                    // append the functions of the transitive dependencies used
-                    if (dependencyTree.getEdgeTarget(edge).getScope() != null && dependencyTree.getEdgeTarget(edge).getScope().equals("test")) {
-                        mermaid.append(" -. test .-> ");
-                    }  else {
-                        mermaid.append(" --> ");
-                    }
-                    mermaid.append(formatDepName(dependencyTree.getEdgeTarget(edge), generateColors))
-                            .append(newLine);
-                    ++ counterForEdges;
-                    if (transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
-                        //  includeTransitiveReferences(dependencyTree, transitiveDepAndReferences, mermaid, edge);
-                        includeTransitiveReference(rootNode, dependencyTree.getEdgeTarget(edge), transitiveDepAndReferences, generateColors, mermaid, showTransitiveFunc);
-                        linkNumbers.add(counterForEdges);
-                        ++ counterForEdges;
-                    }
-                }
-
-            }
-        }
-        // append link style to the graph
-        appendColorsToGraph(generateColors, newLine, mermaid);
-        appendTransitiveLinkColor(linkNumbers, newLine, mermaid);
-        try {
-            Files.write(file, mermaid.toString().getBytes());
-        } catch (IOException e) {
-            logger.error(String.format("failed to create the dependency graph file %s", file));
-        }
-    }
-
-    private void appendColorsToGraph(Map<String, ColorStyleTracker> generateColors, String newLine, StringBuilder mermaid) {
-        generateColors.forEach((dep, colors) -> {
-            List<String> generatedColors = colors.getGeneratedColors();
-            Map<Integer, NodeStyle> nodeStyles = colors.getNodeStyle(); // HashMap<Integer, String>
-
-            for (int i = 0; i < generatedColors.size(); i++) {
-                String color = generatedColors.get(i);
-                StringBuilder styleString = new StringBuilder("style " + color + " fill:" + color);
-
-                // Append node style if the index exists in the map
-                if (nodeStyles.containsKey(i)) {
-                    styleString.append(", ").append(nodeStyles.get(i).getStyle());
-                }
-                mermaid.append(styleString).append(newLine);
-            }
-        });
-    }
-
-    private void appendTransitiveLinkColor(List<Integer> linkNumbers, String newLine, StringBuilder mermaid) {
-        if (!linkNumbers.isEmpty()) {
-            String linkNum = linkNumbers.stream()
-                    .map(String::valueOf)
-                    .collect(Collectors.joining(","));
-            mermaid.append("linkStyle " + linkNum + " stroke:red");
-        }
-    }
-
-    private void includeTransitiveReference(Node rootNode, Node transitiveDep, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, Map<String, ColorStyleTracker> generateColors, StringBuilder mermaid, boolean showTransitiveFunc) {
-        String newLine = System.lineSeparator();
-        // get the references used and display it on teh node edge
-        mermaid
-                .append("\t")
-                .append(formatDepName(rootNode, generateColors));
-        StringBuilder referencesString = new StringBuilder();
-        if (showTransitiveFunc) {
-            Map<String, Set<Reference>> transitiveReferences = transitiveDepAndReferences.get(transitiveDep);
-            // format string to display on arrow
-            for (Map.Entry<String, Set<Reference>> entry : transitiveReferences.entrySet()) {
-                String className = entry.getKey();
-                Set<Reference> references = entry.getValue();
-
-                for (Reference reference : references) {
-                    referencesString.append(className)
-                            .append(".")
-                            .append(reference.getName());
-
-                    String instruction = reference.getInstruction();
-                    if (instruction != null && !instruction.isEmpty()) {
-                        referencesString.append(instruction);
-                    }
-
-                    referencesString.append(newLine);
-                }
-                if (references.isEmpty()) {
-                    referencesString.append(className).append(newLine);
-                }
-            }
-            mermaid.append("-- \"" + referencesString + "\" --> ");
-        } else {
-            mermaid.append(" --> ");
-        }
-
-        mermaid.append(formatDepName(transitiveDep, generateColors))
-                .append(newLine);
-    }
-
-    private String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors) {
-        String depName = String.format("%s:%s", node.getGroupId(), node.getArtifactId());
-
-        if (generateColors.containsKey(depName)) {
-            String prefix = "";
-            // assign color to node and update color tracker
-            ColorStyleTracker colorStyleTracker = generateColors.get(depName);
-            String colorAssigned = colorStyleTracker.getAssignedNodes().getOrDefault(node, null);
-            int index = colorStyleTracker.getGeneratedColors().indexOf(colorAssigned);
-            if (colorStyleTracker.getNodeStyle().containsKey(index) && colorStyleTracker.getNodeStyle().get(index).getIcon() != null) {
-                prefix = colorStyleTracker.getNodeStyle().get(index).getIcon();
-            }
-            if (colorAssigned == null) {
-                if (!node.isOmitted()) {
-                    colorAssigned = colorStyleTracker.getGeneratedColors().get(0);
-                    if (colorStyleTracker.getIndexAssigned() == 0) {
-                        colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 1);
-                    }
-                    prefix = "✔";
-                    NodeStyle nodeStyle = colorStyleTracker.getNodeStyle().getOrDefault(0, new NodeStyle());
-                    nodeStyle.setStyle("stroke-width:10px,stroke-dasharray: 5 5"); //stroke:#10ed0c,
-                    nodeStyle.setIcon(prefix);
-                    colorStyleTracker.addNodeStyle(0, nodeStyle);
-                } else {
-
-                    int currentIndex;
-                    if (colorStyleTracker.getIndexAssigned() == 0) {
-                        currentIndex = 1;
-                        colorAssigned = colorStyleTracker.getGeneratedColors().get(1);
-                        colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 2);
-                    } else {
-                        currentIndex = colorStyleTracker.getIndexAssigned();
-                        colorAssigned = colorStyleTracker.getGeneratedColors().get(colorStyleTracker.getIndexAssigned());
-                        colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 1);
-                    }
-                    if (node.getDescription() != null && node.getDescription().contains("conflict with")) {
-                        prefix = "⚔";
-                        NodeStyle nodeStyle = colorStyleTracker.getNodeStyle().getOrDefault(currentIndex, new NodeStyle());
-                        nodeStyle.setStyle("stroke:#ed1b0c,stroke-width:10px,stroke-dasharray: 5 5");
-                        nodeStyle.setIcon(prefix);
-                        colorStyleTracker.addNodeStyle(currentIndex, nodeStyle);
-                    }
-                }
-                colorStyleTracker.addNode(node, colorAssigned);
-            }
-            if (prefix.isEmpty()) {
-                return String.format("%s(%s L%s-%s-%s)", colorAssigned, prefix, node.getDepLevel(), depName, node.getVersion());
-            } else {
-                return String.format("%s{{\"`%s L%s-%s-%s`\"}}", colorAssigned, prefix, node.getDepLevel(), depName, node.getVersion());
-            }
-
-        }
-        return String.format("L%s-%s:%s-%s", node.getDepLevel(), node.getGroupId(), node.getArtifactId(), node.getVersion());
     }
 
     protected Graph<Node, DefaultEdge> extractDependencyTree(File projectDir) {

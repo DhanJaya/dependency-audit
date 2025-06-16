@@ -5,6 +5,7 @@ import javassist.NotFoundException;
 import javassist.bytecode.BadBytecode;
 import org.dep.model.ColorStyleTracker;
 import org.dep.util.ColorGenerator;
+import org.dep.util.MermaidFileGenerator;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
 import org.junit.jupiter.api.Assertions;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,12 +49,14 @@ public class GraphAnalyzerTest {
     @Test
     public void testExportToMermaid() {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
+        MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
+        Map<Node, String> hrefTransitiveMap = new HashMap<>();
         Path depGraphInMermaid = Path.of("target/depGraph.mermaid");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        graphAnalyzer.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), false, false);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), false, false, hrefTransitiveMap);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
@@ -60,18 +64,20 @@ public class GraphAnalyzerTest {
     @Test
     public void testExportToMermaidWithTestDependenciesRemoved() {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
+        MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
+        Map<Node, String> hrefTransitiveMap = new HashMap<>();
         Path depGraphInMermaid = Path.of("target/depGraphWithOutTest.mermaid");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        graphAnalyzer.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), true, false);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), true, false, hrefTransitiveMap);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
 
     @Test
-    public void testGraphWithTransitiveUsage() throws NotFoundException, IOException, BadBytecode {
+    public void testGraphWithTransitiveUsage() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         Path depGraphInMermaid = Path.of("target/depGraphWithTransitiveUsage.mermaid");
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest/pom.xml");
@@ -82,7 +88,7 @@ public class GraphAnalyzerTest {
     }
 
     @Test
-    public void testGraphWithDisplayTransitiveUsage() throws NotFoundException, IOException, BadBytecode {
+    public void testGraphWithDisplayTransitiveUsage() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         Path depGraphInMermaid = Path.of("target/depGraphWithTransitiveFunctions.mermaid");
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest/pom.xml");
