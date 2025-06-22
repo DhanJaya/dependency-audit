@@ -1,5 +1,7 @@
 package org.reference;
 
+import javassist.ClassPool;
+import javassist.CtClass;
 import javassist.bytecode.BadBytecode;
 import javassist.bytecode.ClassFile;
 import org.dep.model.Reference;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Assertions;
 
 import java.io.*;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 
@@ -122,6 +125,43 @@ public class ReferenceFinderTest {
             Assertions.assertTrue(classReferences.get("javassist.bytecode.MethodInfo").stream().anyMatch(ref ->"getAttribute(Ljava/lang/String;)Ljavassist/bytecode/AttributeInfo;".equals(ref.getName())));
             // verify method annotation
             Assertions.assertTrue(classReferences.containsKey("java.lang.Deprecated"));
+        }
+    }
+
+    @Test
+    public void testDeclaredMethods() throws IOException {
+        String classFilePath = "testreference\\DeclaredMethodsChild.class";
+        // Load as a URL
+        URL resource = getClass().getClassLoader().getResource(classFilePath);
+        if (resource == null) {
+            throw new IllegalArgumentException("Class file not found: " + classFilePath);
+        }
+
+        try (InputStream inputStream = resource.openStream()) {
+            byte[] classBytes = inputStream.readAllBytes();  // Java 9+, or use ByteArrayOutputStream for Java 8
+
+            // Create CtClass from bytes
+            ClassPool classPool = ClassPool.getDefault();
+            CtClass ctClass = classPool.makeClass(new ByteArrayInputStream(classBytes));
+
+            boolean getOverriddenMethodsActual = Arrays.stream(ctClass.getMethods())
+                    .anyMatch(m -> (m.getName() + m.getSignature()).equals("foo()Ljava/util/ArrayList;"));
+
+            boolean getDeclaredOverriddenMethodsActual = Arrays.stream(ctClass.getDeclaredMethods())
+                    .anyMatch(m -> (m.getName() + m.getSignature()).equals("foo()Ljava/util/ArrayList;"));
+
+            Assertions.assertFalse(getOverriddenMethodsActual);
+            Assertions.assertTrue(getDeclaredOverriddenMethodsActual);
+
+
+            boolean getParentMethodsActual = Arrays.stream(ctClass.getMethods())
+                    .anyMatch(m -> (m.getName() + m.getSignature()).equals("foo()Ljava/util/List;"));
+
+            boolean getDeclaredParentMethodsActual = Arrays.stream(ctClass.getDeclaredMethods())
+                    .anyMatch(m -> (m.getName() + m.getSignature()).equals("foo()Ljava/util/List;"));
+
+            Assertions.assertTrue(getParentMethodsActual);
+            Assertions.assertTrue(getDeclaredParentMethodsActual);
         }
     }
 

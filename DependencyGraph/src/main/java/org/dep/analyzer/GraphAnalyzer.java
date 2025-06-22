@@ -148,10 +148,10 @@ public class GraphAnalyzer {
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope, showTransitiveFunc, hrefTransitiveMap);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences);
 
         // generate the html
-        HTMLReport.generateHTML(dependencyTree, mappedReferences, hrefTransitiveMap);
+        HTMLReport.generateDependencyDetailsHTML(projectName, dependencyTree, mappedReferences, hrefTransitiveMap, allUnMappedReferences);
         // write CSV file with all the data
         writeDataToCSV("AllDependencyData.csv", dependencyTree, mappedReferences);
     }

@@ -15,11 +15,34 @@ import java.nio.file.Files;
 import java.util.*;
 
 public class HTMLReport {
-    public static final String HTML_PAGE = "D:\\PhD\\workspace\\Dependency-Audit-New\\dependency-audit\\output.html";
+    public static final String REPORTS_FOLDER = "reports";
+    public static final String DEP_DETAILS_HTML = "DependencyDetails.html";
+    public static final String GRAPH_HTML = "Graph.html";
     public static void main(String[] args) throws IOException {
         //generateHTML();
     }
-    public static void generateHTML(Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences,  Map<Node, String> hrefTransitiveMap) throws IOException {
+
+    public static void generateMermaidGraphHTML(String mermaidGraph, String rootName) throws IOException {
+        Document doc = Document.createShell("");
+
+        doc.head().appendElement("title").text("Dependency Graph");
+        // Add script to <head>
+        Element head = doc.head();
+        head.appendElement("script")
+                .attr("type", "module")
+                .append("import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';\n" +
+                        "mermaid.initialize({ startOnLoad: true });");
+        // Add content to <body>
+        Element body = doc.body();
+        body.appendElement("h2").text(rootName);
+        Element divTag = body.appendElement("div");
+        divTag.appendElement("pre").addClass("mermaid").text(mermaidGraph);
+        File outputFile = new File(REPORTS_FOLDER, GRAPH_HTML);
+        Helper.createFolderIfNotExists(REPORTS_FOLDER);
+        Files.write(outputFile.toPath(), doc.outerHtml().getBytes());
+    }
+
+    public static void generateDependencyDetailsHTML(String projectName, Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
         Document doc = Document.createShell("");
 
         doc.head().appendElement("title").text("Dependency Report");
@@ -31,22 +54,46 @@ public class HTMLReport {
                         "th { background-color: #f2f2f2; }"
         );
 
-        doc.body().appendElement("h1").text("Dependency resolution of Deep Dep");
+        doc.body().appendElement("h1").text("Dependency resolution of " + projectName);
 
         // Example table
         Element table = doc.body().appendElement("table");
 
-        Element headerRow = table.appendElement("tr");
-        headerRow.appendElement("th").text("Dependency");
-        headerRow.appendElement("th").text("Scope");
-        headerRow.appendElement("th").text("Dependency Level");
-        headerRow.appendElement("th").text("Is-Omitted");
-        headerRow.appendElement("th").text("Is-Conflicting");
-        headerRow.appendElement("th").text("Invoked References");
+        appendTableHeader(table);
 
+        appendTableBody(dependencyTree, mappedReferences, hrefTransitiveMap, table);
+
+        addUnMappedReferences(projectName, allUnMappedReferences, doc);
+
+        File outputFile = new File(REPORTS_FOLDER, DEP_DETAILS_HTML);
+        Files.write(outputFile.toPath(), doc.outerHtml().getBytes());
+    }
+
+    private static void addUnMappedReferences(String projectName, Map<String, Set<Reference>> allUnMappedReferences, Document doc) {
+        if (!allUnMappedReferences.isEmpty()) {
+            // include the unmapped references in the HTML
+            doc.body().appendElement("h2").text("Unmapped references to the resolved dependency of  " + projectName);
+            // Create an unordered list element
+            Element ul = new Element("ul");
+            for (Map.Entry<String, Set<Reference>> entry : allUnMappedReferences.entrySet()) {
+                String className = entry.getKey();
+                Set<Reference> references = entry.getValue();
+                if (references.isEmpty()) {
+                    ul.appendElement("li").text(className);
+                } else {
+                    references.forEach(ref -> {
+                        ul.appendElement("li").text(className + "::" + ref.getName());
+                    });
+                }
+            }
+            // Insert the list into the body (or any specific element)
+            doc.body().appendChild(ul);
+        }
+    }
+
+    private static void appendTableBody(Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<Node, String> hrefTransitiveMap, Element table) {
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
-        List<String[]> rows = new ArrayList<>();
         while (iterator.hasNext()) {
             Node node = iterator.next();
             // Iterate through edges connected to this vertex
@@ -57,48 +104,62 @@ public class HTMLReport {
                     if (mappedReferences.containsKey(currentNode)) {
 
                         Map<String, Set<Reference>> classAndReferences = mappedReferences.get(dependencyTree.getEdgeTarget(edge));
-                        // format string to display on arrow
                         for (Map.Entry<String, Set<Reference>> entry : classAndReferences.entrySet()) {
                             String className = entry.getKey();
                             Set<Reference> references = entry.getValue();
 
                             for (Reference reference : references) {
                                 if (reference.getInstruction() != null) {
-                                    referencesString.append(reference.getInstruction()).append(" -> ").append(className).append("::").append(reference.getName()).append("\n");
+                                    referencesString.append(reference.getInstruction()).append(" -> ").append(className).append("::").append(reference.getName()).append("<br>");
                                 } else {
-                                    referencesString.append(className).append("::").append(reference.getName()).append("\n");
+                                    referencesString.append(className).append("::").append(reference.getName()).append("<br>");
                                 }
                             }
                             if (references.isEmpty()) {
-                                referencesString.append(className).append("\n");
+                                referencesString.append(className).append("<br>");
                             }
                         }
                     }
-
-                    rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), referencesString.toString()});
                     visitedEdges.add(edge);
+                    Element row;
+                    if (hrefTransitiveMap.containsKey(currentNode)) {
+                        row = table.appendElement("tr id = \"" + hrefTransitiveMap.get(currentNode) +"\"");
+                    } else {
+                        row = table.appendElement("tr");
 
-                    Element row = table.appendElement("tr");
+                    }
+
                     row.appendElement("td").text(currentNode.getDependencyName());
                     row.appendElement("td").text(currentNode.getScope());
                     row.appendElement("td").text(String.valueOf(currentNode.getDepLevel()));
                     row.appendElement("td").text(String.valueOf(currentNode.isOmitted()));
-                    row.appendElement("td").text(String.valueOf(node.getDescription().contains("conflict with")));
+                    if (node.getDescription() != null) {
+                        row.appendElement("td").text(String.valueOf(node.getDescription().contains("conflict with")));
+                    } else {
+                        row.appendElement("td").text("");
+                    }
                     if (hrefTransitiveMap.containsKey(currentNode)) {
                         //L1-org.apache.velocity:velocity-1.6.4 --.text <a href='http://google.com'>link</a>.--> - for the hyperlink
                         Element td = row.appendElement("td");
                         td.appendElement("a")
                                 .attr("href", hrefTransitiveMap.get(currentNode))
                                 .attr("style", "display: block; text-decoration: none; color: inherit;")
-                                .text(referencesString.toString());
-                    }else {
-                        row.appendElement("td").text(referencesString.toString());
+                                .html(referencesString.toString());
+                    } else {
+                        row.appendElement("td").html(referencesString.toString());
                     }
                 }
             }
         }
+    }
 
-        File outputFile = new File(HTML_PAGE);
-        Files.write(outputFile.toPath(), doc.outerHtml().getBytes());
+    private static void appendTableHeader(Element table) {
+        Element headerRow = table.appendElement("tr");
+        headerRow.appendElement("th").text("Dependency");
+        headerRow.appendElement("th").text("Scope");
+        headerRow.appendElement("th").text("Dependency Level");
+        headerRow.appendElement("th").text("Is Omitted");
+        headerRow.appendElement("th").text("Is Conflicting");
+        headerRow.appendElement("th").text("Invoked References");
     }
 }

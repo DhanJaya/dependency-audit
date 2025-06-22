@@ -70,33 +70,42 @@ public class DepUsage {
     private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException, URISyntaxException {
         // include the java classes as well, so that the standard java class will not be marked as unmapped references
         Map<String, Set<String>> standardJavaClasses = StandardJavaReferences.loadStandardJavaReferences();
-
-        ClassPool classPool = ClassPool.getDefault();
-        if (depDirectory.isDirectory()) {
-            File[] jarFiles = depDirectory.listFiles((dir, name) -> name.endsWith(".jar"));
-            if (jarFiles != null) {
-                for (File jarFile : jarFiles) {
-                    classPool.insertClassPath(jarFile.getAbsolutePath());
+        List<ClassPath> classPaths = new ArrayList<>();
+        //ClassPool classPool = ClassPool.getDefault();
+        ClassPool classPool = new ClassPool(true);
+        try {
+            if (depDirectory.isDirectory()) {
+                File[] jarFiles = depDirectory.listFiles((dir, name) -> name.endsWith(".jar"));
+                if (jarFiles != null) {
+                    for (File jarFile : jarFiles) {
+                        ClassPath classPath = classPool.insertClassPath(jarFile.getAbsolutePath());
+                        classPaths.add(classPath);
+                    }
                 }
             }
-        }
-        for (String referencedClass : externalReferencesInvoked.keySet()) {
-            // get jars connected to that class
-            if (allClassesInDep.containsKey(referencedClass)) {
-                //TODO: Currently we only check the first dependency that includes the class
-                Set<Reference> unMappedReferences = new HashSet<>(externalReferencesInvoked.get(referencedClass));
-                List<Node> dependenciesWithClass = allClassesInDep.get(referencedClass);
-                List<String> parentClasses = new ArrayList<>();
-                if (dependenciesWithClass.size() > 0) {
-                    mapReferenceWithDep(dependenciesWithClass.get(0), referencedClass, unMappedReferences, mappedReferences, parentClasses, classPool);
-                }
-                if (!unMappedReferences.isEmpty()) {
+            for (String referencedClass : externalReferencesInvoked.keySet()) {
+                // get jars connected to that class
+                if (allClassesInDep.containsKey(referencedClass)) {
+                    //TODO: Currently we only check the first dependency that includes the class
+                    Set<Reference> unMappedReferences = new HashSet<>(externalReferencesInvoked.get(referencedClass));
+                    List<Node> dependenciesWithClass = allClassesInDep.get(referencedClass);
+                    List<String> parentClasses = new ArrayList<>();
+                    if (dependenciesWithClass.size() > 0) {
+                        mapReferenceWithDep(dependenciesWithClass.get(0), referencedClass, unMappedReferences, mappedReferences, parentClasses, classPool);
+                    }
+                    if (!unMappedReferences.isEmpty()) {
 
-                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool, standardJavaClasses);
+                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool, standardJavaClasses);
+                    }
+                    if (!unMappedReferences.isEmpty()) {
+                        allUnMappedReferences.put(referencedClass, unMappedReferences);
+                    }
                 }
-                if (!unMappedReferences.isEmpty()) {
-                    allUnMappedReferences.put(referencedClass, unMappedReferences);
-                }
+            }
+        } finally {
+            // Always remove class paths to avoid locking the JARs
+            for (ClassPath cp : classPaths) {
+                classPool.removeClassPath(cp);
             }
         }
     }
@@ -180,16 +189,16 @@ public class DepUsage {
             boolean referenceFound = false;
 
             // Check methods
-            for (CtMethod method : ctClass.getMethods()) { // TODO: check if this should be declared methods
-                if ((method.getName() + method.getSignature()).equals(methodOrField.getName())) { //method.getSignature()
+            for (CtMethod method : ctClass.getDeclaredMethods()) {
+                if ((method.getName() + method.getSignature()).equals(methodOrField.getName())) {
                     mappedMethodsAndFields.add(methodOrField);
                     referenceFound = true;
                     break;
                 }
             }
             if (!referenceFound) {
-                for (CtConstructor constrtuctor : ctClass.getConstructors()) {
-                    if (("<init>" + constrtuctor.getSignature()).equals(methodOrField.getName())) { //method.getSignature()
+                for (CtConstructor constrtuctor : ctClass.getDeclaredConstructors()) {
+                    if (("<init>" + constrtuctor.getSignature()).equals(methodOrField.getName())) {
                         mappedMethodsAndFields.add(methodOrField);
                         referenceFound = true;
                         break;
@@ -198,8 +207,8 @@ public class DepUsage {
             }
 
             // Check fields
-            if (!referenceFound) { // Only check fields if method wasn't found
-                for (CtField field : ctClass.getFields()) { // TODO: check if this should be declared methods
+            if (!referenceFound) {
+                for (CtField field : ctClass.getDeclaredFields()) {
                     if (field.getName().equals(methodOrField.getName())) {
                         mappedMethodsAndFields.add(methodOrField);
                         referenceFound = true;
@@ -209,7 +218,8 @@ public class DepUsage {
             }
 
             if (referenceFound) {
-                iterator.remove(); // Remove matched item
+                // Remove matched item
+                iterator.remove();
             }
         }
     }

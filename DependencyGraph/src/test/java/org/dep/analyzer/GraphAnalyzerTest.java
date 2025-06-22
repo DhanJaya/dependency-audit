@@ -4,6 +4,7 @@ import fr.dutra.tools.maven.deptree.core.Node;
 import javassist.NotFoundException;
 import javassist.bytecode.BadBytecode;
 import org.dep.model.ColorStyleTracker;
+import org.dep.model.Reference;
 import org.dep.util.ColorGenerator;
 import org.dep.util.MermaidFileGenerator;
 import org.jgrapht.Graph;
@@ -47,7 +48,7 @@ public class GraphAnalyzerTest {
 
 
     @Test
-    public void testExportToMermaid() {
+    public void testExportToMermaid() throws IOException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
@@ -56,13 +57,14 @@ public class GraphAnalyzerTest {
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), false, false, hrefTransitiveMap);
+        Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), false, false, hrefTransitiveMap, allUnMappedReferences);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
 
     @Test
-    public void testExportToMermaidWithTestDependenciesRemoved() {
+    public void testExportToMermaidWithTestDependenciesRemoved() throws IOException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
@@ -71,7 +73,8 @@ public class GraphAnalyzerTest {
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), true, false, hrefTransitiveMap);
+        Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), true, false, hrefTransitiveMap, allUnMappedReferences);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
