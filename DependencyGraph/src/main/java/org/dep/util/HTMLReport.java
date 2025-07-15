@@ -8,19 +8,28 @@ import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.traverse.BreadthFirstIterator;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+
+
+import static org.dep.analyzer.GraphAnalyzer.REPORT_FOLDER;
 
 public class HTMLReport {
-    public static final String REPORTS_FOLDER = "reports";
+
+    private static final Logger logger = LoggerFactory.getLogger(HTMLReport.class);
+
+    // Name of the HTML file created with dependency details
     public static final String DEP_DETAILS_HTML = "DependencyDetails.html";
+
+    //Name of the HTML file created with the dependency graph
     public static final String GRAPH_HTML = "Graph.html";
-    public static void main(String[] args) throws IOException {
-        //generateHTML();
-    }
 
     public static void generateMermaidGraphHTML(String mermaidGraph, String rootName) throws IOException {
         Document doc = Document.createShell("");
@@ -37,9 +46,10 @@ public class HTMLReport {
         body.appendElement("h2").text(rootName);
         Element divTag = body.appendElement("div");
         divTag.appendElement("pre").addClass("mermaid").text(mermaidGraph);
-        File outputFile = new File(REPORTS_FOLDER, GRAPH_HTML);
-        Helper.createFolderIfNotExists(REPORTS_FOLDER);
+        File outputFile = new File(REPORT_FOLDER, GRAPH_HTML);
+        Helper.createFolderIfNotExists(REPORT_FOLDER);
         Files.write(outputFile.toPath(), doc.outerHtml().getBytes());
+        logger.info("Output File: " + outputFile.getAbsolutePath());
     }
 
     public static void generateDependencyDetailsHTML(String projectName, Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
@@ -65,14 +75,14 @@ public class HTMLReport {
 
         addUnMappedReferences(projectName, allUnMappedReferences, doc);
 
-        File outputFile = new File(REPORTS_FOLDER, DEP_DETAILS_HTML);
+        File outputFile = new File(REPORT_FOLDER, DEP_DETAILS_HTML);
         Files.write(outputFile.toPath(), doc.outerHtml().getBytes());
     }
 
     private static void addUnMappedReferences(String projectName, Map<String, Set<Reference>> allUnMappedReferences, Document doc) {
         if (!allUnMappedReferences.isEmpty()) {
             // include the unmapped references in the HTML
-            doc.body().appendElement("h2").text("Unmapped references to the resolved dependency of  " + projectName);
+            doc.body().appendElement("h2").text("Unmapped references to the resolved dependencies of  " + projectName);
             // Create an unordered list element
             Element ul = new Element("ul");
             for (Map.Entry<String, Set<Reference>> entry : allUnMappedReferences.entrySet()) {
@@ -123,7 +133,7 @@ public class HTMLReport {
                     visitedEdges.add(edge);
                     Element row;
                     if (hrefTransitiveMap.containsKey(currentNode)) {
-                        row = table.appendElement("tr id = \"" + hrefTransitiveMap.get(currentNode) +"\"");
+                        row = table.appendElement("tr id = \"" + hrefTransitiveMap.get(currentNode) + "\"");
                     } else {
                         row = table.appendElement("tr");
 

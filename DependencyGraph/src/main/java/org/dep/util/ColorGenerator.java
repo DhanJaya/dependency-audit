@@ -55,8 +55,8 @@ public class ColorGenerator {
         Map<String, ColorStyleTracker> generateColors = new HashMap<>();
 
         // number of colors to generate
-        int incrementForColor = 360 / (duplicateNodes.size() + 1);
-        AtomicInteger currentColor = new AtomicInteger(0);
+        int incrementForColor = 340 / (duplicateNodes.size() + 1);
+        AtomicInteger currentColor = new AtomicInteger(20);
         duplicateNodes.forEach((key, value) -> {
             // generate shades
             List<String> colors = new ArrayList<>();

@@ -52,13 +52,14 @@ public class GraphAnalyzerTest {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
-        Path depGraphInMermaid = Path.of("target/depGraph.mermaid");
+        GraphAnalyzer.REPORT_FOLDER = "DependencyTreeWithTest";
+        Path depGraphInMermaid = Path.of("DependencyTreeWithTest/Graph.html");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), false, false, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, new HashMap<>(), false, false, hrefTransitiveMap, allUnMappedReferences);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
@@ -68,13 +69,14 @@ public class GraphAnalyzerTest {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
-        Path depGraphInMermaid = Path.of("target/depGraphWithOutTest.mermaid");
+        GraphAnalyzer.REPORT_FOLDER = "DependencyTreeWithoutTest";
+        Path depGraphInMermaid = Path.of("DependencyTreeWithoutTest/Graph.html");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, depGraphInMermaid, new HashMap<>(), true, false, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, new HashMap<>(), true, false, hrefTransitiveMap, allUnMappedReferences);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
@@ -82,10 +84,10 @@ public class GraphAnalyzerTest {
     @Test
     public void testGraphWithTransitiveUsage() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
-        Path depGraphInMermaid = Path.of("target/depGraphWithTransitiveUsage.mermaid");
+        Path depGraphInMermaid = Path.of("org.example_DependencyAuditTestWithTrans/Graph.html");
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest/pom.xml");
         File projectPom = new File(testProject.getFile());
-        graphAnalyzer.analyze("target/depGraphWithTransitiveUsage", false, false, projectPom);
+        graphAnalyzer.analyze(false, true, projectPom);
 
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
     }
@@ -93,10 +95,10 @@ public class GraphAnalyzerTest {
     @Test
     public void testGraphWithDisplayTransitiveUsage() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
-        Path depGraphInMermaid = Path.of("target/depGraphWithTransitiveFunctions.mermaid");
+        Path depGraphInMermaid = Path.of("org.example_DependencyAuditTestWithTrans/Graph.html");
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest/pom.xml");
         File projectPom = new File(testProject.getFile());
-        graphAnalyzer.analyze("target/depGraphWithTransitiveFunctions", false, true, projectPom);
+        graphAnalyzer.analyze(false, true, projectPom);
 
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
     }

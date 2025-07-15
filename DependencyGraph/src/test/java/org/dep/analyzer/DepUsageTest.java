@@ -36,7 +36,7 @@ public class DepUsageTest {
         DepUsage depUsage = new DepUsage();
         depUsage.extractDepUsage(dependencyTree, new File(testProject.getFile()), mvnCmd, mappedReferences,allUnMappedReferences);
 
-        Assertions.assertEquals(4, mappedReferences.size());
+        Assertions.assertEquals(5, mappedReferences.size());
         Node matchedNode = null;
 
         for (Node node : mappedReferences.keySet()) {

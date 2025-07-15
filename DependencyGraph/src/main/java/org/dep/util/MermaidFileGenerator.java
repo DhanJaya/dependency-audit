@@ -6,63 +6,68 @@ import org.dep.model.ColorStyleTracker;
 import org.dep.model.NodeStyle;
 import org.dep.model.Reference;
 import org.jgrapht.Graph;
+import org.jgrapht.GraphPath;
+import org.jgrapht.alg.shortestpath.AllDirectedPaths;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.traverse.BreadthFirstIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 
 public class MermaidFileGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(MermaidFileGenerator.class);
 
-
     /**
      * Generate the mermaid file for the passed dependency tree at the given path location
      *
      * @param dependencyTree
      * @param generateColors
-     * @param file
      */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Path file, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         addLegendToGraph(mermaid, newLine);
         Map<Node, String> nodeAliasMap = new HashMap<>();
         int index = 0;
-
+        Node rootNode = null;
+        String rootNodeName = null;
+        boolean isRootNode = false;
         // Assign aliases and declare node labels
         for (Node node : dependencyTree.vertexSet()) {
+            if (dependencyTree.inDegreeOf(node) == 0) {
+                rootNode = node;
+                rootNodeName = node.getGroupId() + ":" + node.getArtifactId();
+                isRootNode = true;
+            }
             if (removeTestDep && node.getScope() != null && node.getScope().equals("test")) {
                 continue;
             }
             String alias = CellReference.convertNumToColString(index);
             nodeAliasMap.put(node, alias);
             mermaid.append(alias)
-                    .append(formatDepName(node, generateColors, nodeAliasMap))
+                    .append(formatDepName(node, generateColors, nodeAliasMap, isRootNode))
                     .append(newLine);
             index++;
+            isRootNode = false;
         }
-
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
         List<Integer> linkNumbers = new ArrayList<>();
         // The edge is starting at 3 since edges were used to display the legend
         int counterForEdges = 3;
         // keep track of the initial node to link transitive dependencies
-        Node rootNode = null;
-        String rootNodeName = null;
+
         while (iterator.hasNext()) {
             Node node = iterator.next();
-            if (rootNode == null) {
-                rootNode = node;
-                rootNodeName = node.getGroupId() + ":" + node.getArtifactId();
-            }
             // Iterate through edges connected to this vertex
             for (DefaultEdge edge : dependencyTree.edgesOf(node)) {
                 if (!visitedEdges.contains(edge)) {
@@ -74,6 +79,54 @@ public class MermaidFileGenerator {
                     visitedEdges.add(edge);
                     String srcAlias = nodeAliasMap.get(source);
                     String tgtAlias = nodeAliasMap.get(target);
+                    // Need to handle scope updated from test when test scope is omitted
+                    if (srcAlias == null) {
+                        AllDirectedPaths<Node, DefaultEdge> allPaths =
+                                new AllDirectedPaths<>(dependencyTree);
+                        List<GraphPath<Node, DefaultEdge>> paths =
+                                allPaths.getAllPaths(rootNode, target, true, null);
+                        // add the node connections to the graph and alias map, need to check if its only one path available. then get the first name
+                        for (GraphPath<Node, DefaultEdge> graphPath : paths) {
+                            for (DefaultEdge defaultEdge : graphPath.getEdgeList()) {
+                                if (visitedEdges.contains(defaultEdge)) {
+                                    continue;
+                                }
+                                visitedEdges.add(defaultEdge);
+                                Node parentNode = dependencyTree.getEdgeSource(defaultEdge);
+                                Node childNode = dependencyTree.getEdgeTarget(defaultEdge);
+                                if (!nodeAliasMap.containsKey(parentNode)) {
+                                    String parentAlias = CellReference.convertNumToColString(index);
+                                    nodeAliasMap.put(parentNode, parentAlias);
+                                    mermaid.append(parentAlias)
+                                            .append(formatDepName(node, generateColors, nodeAliasMap, isRootNode))
+                                            .append(newLine);
+                                    index++;
+                                }
+                                if (!nodeAliasMap.containsKey(childNode)) {
+                                    String childAlias = CellReference.convertNumToColString(index);
+                                    nodeAliasMap.put(childNode, childAlias);
+                                    mermaid.append(childAlias)
+                                            .append(formatDepName(node, generateColors, nodeAliasMap, isRootNode))
+                                            .append(newLine);
+                                    index++;
+                                }
+                                // Add the node links to the graph except last node which will be added in the next step
+                                if (!target.equals(childNode)) {
+                                    mermaid.append("\t").append(nodeAliasMap.get(parentNode));
+                                    if (childNode.getScope() != null && "test".equals(childNode.getScope())) {
+                                        mermaid.append(" -. test .-> ");
+                                    } else {
+                                        mermaid.append(" --> ");
+                                    }
+                                    mermaid.append(nodeAliasMap.get(childNode)).append(newLine);
+                                    ++counterForEdges;
+                                }
+                            }
+                        }
+                        srcAlias = nodeAliasMap.get(source);
+                    }
+
+
                     mermaid.append("\t").append(srcAlias);
 
                     if (target.getScope() != null && "test".equals(target.getScope())) {
@@ -84,7 +137,8 @@ public class MermaidFileGenerator {
                     mermaid.append(tgtAlias).append(newLine);
 
                     ++counterForEdges;
-                    if (showTransitiveFunc && transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
+                    if (transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
+                        dependencyTree.getEdgeTarget(edge).setTranFunctionsUsed(true);
                         includeTransitiveReference(rootNode, dependencyTree.getEdgeTarget(edge), transitiveDepAndReferences, mermaid, showTransitiveFunc, nodeAliasMap, hrefTransitiveMap);
                         linkNumbers.add(counterForEdges);
                         ++counterForEdges;
@@ -95,15 +149,41 @@ public class MermaidFileGenerator {
         // append link style to the graph
         appendColorsToGraph(generateColors, newLine, mermaid);
         appendTransitiveLinkColor(linkNumbers, mermaid);
+
+        addUnMappedReferencesToGraph(allUnMappedReferences, newLine, mermaid, index);
+
         // generate HTML file
         HTMLReport.generateMermaidGraphHTML(mermaid.toString(), rootNodeName);
-        Files.write(file, mermaid.toString().getBytes());
+      //  Files.write(Path.of("TransitiveFunctions.mermaid"), mermaid.toString().getBytes()); //- to write to a .mermaid file
+    }
+
+    private static void addUnMappedReferencesToGraph(Map<String, Set<Reference>> allUnMappedReferences, String newLine, StringBuilder mermaid, int index) {
+        // Append unmapped referenced to the graph
+        if (!allUnMappedReferences.isEmpty()) {
+            // create index for unmapped references
+            String unmappedAlias = CellReference.convertNumToColString(index);
+            mermaid.append(newLine).append(unmappedAlias).append("[\"`**Unmapped References**").append(newLine);
+            allUnMappedReferences.forEach((className, references) -> {
+                if (references == null || references.isEmpty()) {
+                    mermaid.append(className).append(newLine);
+                } else {
+                    references.forEach(reference -> {
+                        String instruction = reference.getInstruction();
+                        if (instruction != null && !instruction.isEmpty()) {
+                            mermaid.append(instruction).append("->");
+                        }
+                        mermaid.append(className).append("::").append(reference.getName()).append(newLine);
+                    });
+                }
+            });
+            mermaid.append("`\"]").append(newLine).append("style ").append(unmappedAlias).append(" fill:none,stroke-width:5px,stroke: grey");
+        }
     }
 
     private void addLegendToGraph(StringBuilder graph, String lineSeparator) {
         graph.append("subgraph Legend").append(lineSeparator)
                 .append("direction LR").append(lineSeparator)
-                .append("L0{{✔\uFE0F Resolved Dependency}}").append(lineSeparator)
+                .append("L0{{✔️ Resolved Dependency}}").append(lineSeparator)
                 .append("style L0 stroke-width:10px,stroke-dasharray: 5 5").append(lineSeparator)
                 .append("L1{{\"`❌ Conflicts with another version`\"}}").append(lineSeparator)
                 .append("style L1 stroke:#ed1b0c,stroke-width:10px,stroke-dasharray: 5 5").append(lineSeparator)
@@ -120,7 +200,7 @@ public class MermaidFileGenerator {
                 .append(" end").append(lineSeparator);
     }
 
-    private String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors, Map<Node, String> nodeAliasMap) {
+    private String formatDepName(Node node, Map<String, ColorStyleTracker> generateColors, Map<Node, String> nodeAliasMap, boolean isRootNode) {
         String depName = String.format("%s:%s", node.getGroupId(), node.getArtifactId());
 
         if (generateColors.containsKey(depName)) {
@@ -136,7 +216,7 @@ public class MermaidFileGenerator {
                     if (colorStyleTracker.getIndexAssigned() == 0) {
                         colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 1);
                     }
-                    prefix = "✔️";//""✔";
+                    prefix = "✔️";
                     nodeStyle.setStyle("stroke-width:10px,stroke-dasharray: 5 5"); //stroke:#10ed0c,
                     nodeStyle.setIcon(prefix);
                     nodeStyle.setColor(colorStyleTracker.getGeneratedColors().get(0));
@@ -151,7 +231,7 @@ public class MermaidFileGenerator {
                     nodeStyle.setColor(colorStyleTracker.getGeneratedColors().get(currentIndex));
                     colorStyleTracker.setIndexAssigned(currentIndex + 1);
                     if (node.getDescription() != null && node.getDescription().contains("conflict with")) {
-                        prefix = "❌";//"⚔";
+                        prefix = "❌";
                         nodeStyle.setStyle("stroke:#ed1b0c,stroke-width:10px,stroke-dasharray: 5 5");
                         nodeStyle.setIcon(prefix);
                     }
@@ -159,12 +239,16 @@ public class MermaidFileGenerator {
                 colorStyleTracker.addNodeStyle(node, nodeStyle);
             }
             if (prefix.isEmpty()) {
-                return String.format("(%s L%s-%s-%s)", prefix, node.getDepLevel(), depName, node.getVersion());
+                return String.format("(%s &lt;&lt;Level %s&gt;&gt; \\n %s-%s)", prefix, node.getDepLevel(), depName, node.getVersion());
             } else {
-                return String.format("{{\"`%s L%s-%s-%s`\"}}", prefix, node.getDepLevel(), depName, node.getVersion());
+                return String.format("{{\"%s &lt;&lt;Level %s&gt;&gt; \\n %s-%s\"}}", prefix, node.getDepLevel(), depName, node.getVersion());
             }
         }
-        return String.format("(L%s-%s:%s-%s)", node.getDepLevel(), node.getGroupId(), node.getArtifactId(), node.getVersion());
+        if (isRootNode) {
+            return String.format("(%s:%s-%s)", node.getGroupId(), node.getArtifactId(), node.getVersion());
+        } else {
+            return String.format("(&lt;&lt;Level %s&gt;&gt; \\n %s:%s-%s)", node.getDepLevel(), node.getGroupId(), node.getArtifactId(), node.getVersion());
+        }
     }
 
     private void appendTransitiveLinkColor(List<Integer> linkNumbers, StringBuilder mermaid) {
@@ -172,19 +256,20 @@ public class MermaidFileGenerator {
             String linkNum = linkNumbers.stream()
                     .map(String::valueOf)
                     .collect(Collectors.joining(","));
-            mermaid.append("linkStyle " + linkNum + " stroke:red");
+            mermaid.append("linkStyle ").append(linkNum).append(" stroke:red");
         }
     }
 
     private void includeTransitiveReference(Node rootNode, Node transitiveDep, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, StringBuilder mermaid, boolean showTransitiveFunc, Map<Node, String> nodeAliasMap, Map<Node, String> hrefTransitiveMap) {
         String newLine = System.lineSeparator();
-        // get the references used and display it on teh node edge
+        // get the references used and display it on the node edge
+        String srcAlias = nodeAliasMap.get(rootNode);
+        String tgtAlias = nodeAliasMap.get(transitiveDep);
+        mermaid
+                .append("\t")
+                .append(srcAlias);
+
         if (showTransitiveFunc) {
-            String srcAlias = nodeAliasMap.get(rootNode);
-            String tgtAlias = nodeAliasMap.get(transitiveDep);
-            mermaid
-                    .append("\t")
-                    .append(srcAlias);
             StringBuilder referencesString = new StringBuilder();
             Map<String, Set<Reference>> transitiveReferences = transitiveDepAndReferences.get(transitiveDep);
             // maximum number of dependencies being appended to the graph
@@ -205,13 +290,15 @@ public class MermaidFileGenerator {
                         }
                         referencesString.append(className)
                                 .append("::")
-                                .append(reference.getName());
-                        referencesString.append(newLine);
+                                .append(reference.getName())
+                                .append(newLine);
                     } else {
                         String href = transitiveDep.getGroupId() + transitiveDep.getArtifactId();
-                        referencesString.append(" ... <a href='").append(HTMLReport.DEP_DETAILS_HTML).append("#")
-                                //.append(GraphAnalyzer.projectName)
-                        .append(href).append("'>more</a>");
+                        referencesString.append(" ... <a href='")
+                                .append(HTMLReport.DEP_DETAILS_HTML)
+                                .append("#")
+                                .append(href)
+                                .append("'>more</a>");
                         hrefTransitiveMap.put(transitiveDep, href);
                         break outterLoop;
                     }
@@ -223,8 +310,14 @@ public class MermaidFileGenerator {
                     }
                 }
             }
-            mermaid.append("-- \"" + referencesString + "\" --> ");
-            mermaid.append(tgtAlias)
+            mermaid.append("-- \"")
+                    .append(referencesString)
+                    .append("\" --> ")
+                    .append(tgtAlias)
+                    .append(newLine);
+        } else {
+            mermaid.append(" --> ")
+                    .append(tgtAlias)
                     .append(newLine);
         }
     }

@@ -3,17 +3,18 @@ package org.dep.util;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javassist.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class StandardJavaReferences {
+    private static final Logger logger = LoggerFactory.getLogger(StandardJavaReferences.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String JAVA_REFERENCES = "InBuiltJavaMethods/java-references.json";
 
@@ -32,6 +33,13 @@ public class StandardJavaReferences {
         });
     }
 
+    /**
+     * this is a test method
+     */
+    @SuppressWarnings({})
+    private void testMethod() {
+        System.out.println("FFFFFF");
+    }
     // Extract method and field names from classes
     public static Map<String, Set<String>> extractReferences(List<String> javaClasses) {
         Map<String, Set<String>> allJavaReferences = new HashMap<>();
@@ -64,18 +72,32 @@ public class StandardJavaReferences {
     }
 
     // Read from JSON
-    public static Map<String, Set<String>> loadStandardJavaReferences() throws IOException, URISyntaxException {
+    public static Map<String, Set<String>> loadStandardJavaReferences() throws IOException {
 
         return objectMapper.readValue(getStandardJavaReferences(), new TypeReference<Map<String, Set<String>>>() {
         });
     }
 
-    private static File getStandardJavaReferences() throws URISyntaxException {
-        URL resourceUrl = StandardJavaReferences.class.getClassLoader().getResource(JAVA_REFERENCES);
-        if (resourceUrl == null) {
-            throw new IllegalArgumentException("Java References file not found");
+    private static File getStandardJavaReferences() throws IOException {
+        File tempFile;
+        try (InputStream inputStream = StandardJavaReferences.class.getClassLoader()
+                .getResourceAsStream(JAVA_REFERENCES)) {
+
+            if (inputStream == null) {
+                throw new IllegalArgumentException("Resource not found: InBuiltJavaMethods/java-references.json");
+            }
+
+            // Create temp file
+            tempFile = File.createTempFile("java-references", ".json");
+            // Copy stream to temp file
+            try (OutputStream outStream = new FileOutputStream(tempFile)) {
+                inputStream.transferTo(outStream);
+            }
+            tempFile.deleteOnExit();
         }
-        return new File(resourceUrl.toURI());
+
+        logger.info(tempFile.getAbsolutePath());
+        return tempFile;
     }
     /**
      * Extract all the Java classes in the Standard Java library. This code only works for Java 9+, since till Java 8 the standard java classes were available in the rt.jar file

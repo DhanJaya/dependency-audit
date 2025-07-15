@@ -20,17 +20,27 @@ import org.dep.util.CommandExecutor;
 
 import java.io.IOException;
 
-import java.io.*;
+import java.io.File;
+import java.io.StringWriter;
+import java.io.Reader;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.List;
+import java.util.function.Function;
 
 import org.dep.util.HTMLReport;
 import org.dep.util.MermaidFileGenerator;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.nio.graphml.GraphMLExporter;
 import org.jgrapht.traverse.BreadthFirstIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +49,10 @@ import org.slf4j.LoggerFactory;
 public class GraphAnalyzer {
     public static final String DEPENDENCY_TREE_FILE = "DepTree.txt";
     private static final Logger logger = LoggerFactory.getLogger(GraphAnalyzer.class);
-    public static String projectName = null;
+    // The project name under analysis
+    public static String PROJECT_NAME = null;
+    // The folder in which all reports will be generated under
+    public static String REPORT_FOLDER = null;
     public static Option INPUT = Option.builder()
             .argName("aUrlOrPOMFile")
             .option("input")
@@ -48,25 +61,9 @@ public class GraphAnalyzer {
             .desc("Provides the project pom.xml file path")
             .build();
 
-    public static Option FORMAT = Option.builder()
-            .argName("json|md")
-            .option("format")
-            .hasArg()
-            .required(true)
-            .desc("the output format , md is markdown + mermaid")
-            .build();
-
-    public static Option OUTPUT = Option.builder()
-            .argName("output-file")
-            .option("output")
-            .hasArg()
-            .required(true)
-            .desc("The name of the output file")
-            .build();
-
     public static Option TEST_DEP = Option.builder()
-            .argName("test-scope")
-            .option("testscope")
+            .argName("exclude-test-scope")
+            .option("excludetestscope")
             .hasArg()
             .required(false)
             .desc("Graph should exclude test scope dependencies by default false")
@@ -95,8 +92,6 @@ public class GraphAnalyzer {
 
         Options options = new Options();
         options.addOption(INPUT);
-        options.addOption(FORMAT);
-        options.addOption(OUTPUT);
         options.addOption(TEST_DEP);
         options.addOption(TRANSITIVE_FUNC);
 
@@ -105,15 +100,11 @@ public class GraphAnalyzer {
         // parse the command line arguments
         CommandLine line;
         String input;
-        String format;
-        String outputFile;
         boolean excludeTestScope;
         boolean showTransitiveFunc;
         try {
             line = parser.parse(options, args);
             input = line.getParsedOptionValue(INPUT);
-            format = line.getParsedOptionValue(FORMAT);
-            outputFile = line.getParsedOptionValue(OUTPUT);
             excludeTestScope = Boolean.parseBoolean(line.getParsedOptionValue(TEST_DEP));
             showTransitiveFunc = Boolean.parseBoolean(line.getParsedOptionValue(TRANSITIVE_FUNC));
         } catch (org.apache.commons.cli.ParseException e) {
@@ -128,14 +119,27 @@ public class GraphAnalyzer {
             logger.error(String.format("Invalid Maven project path: %s", input));
             return;
         }
-        graphAnalyzer.analyze(outputFile, excludeTestScope, showTransitiveFunc, projectPom);
+        graphAnalyzer.analyze(excludeTestScope, showTransitiveFunc, projectPom);
     }
 
-    public void analyze(String outputFile, boolean excludeTestScope, boolean showTransitiveFunc, File projectPom) throws IOException, NotFoundException, BadBytecode, URISyntaxException {
+    private void createReportFolder(String projectName, boolean excludeTestScope, boolean showTransitiveFunc) {
+        StringBuilder suffix = new StringBuilder();
+        if (excludeTestScope) {
+            suffix.append("NoTest");
+        }
+        if (showTransitiveFunc) {
+            suffix.append("WithTrans");
+        }
+        REPORT_FOLDER = projectName.replace(":", "_") + suffix;
+    }
+
+    public void analyze(boolean excludeTestScope, boolean showTransitiveFunc, File projectPom) throws IOException, NotFoundException, BadBytecode, URISyntaxException {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
+
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Node rootNode = iterator.next();
-        projectName = rootNode.getGroupId()+ "_" + rootNode.getArtifactId();
+        PROJECT_NAME = rootNode.getGroupId() + ":" + rootNode.getArtifactId();
+        createReportFolder(PROJECT_NAME, excludeTestScope, showTransitiveFunc);
         DepUsage depUsage = new DepUsage();
         Map<Node, Map<String, Set<Reference>>> mappedReferences = new HashMap<>();
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap<>();
@@ -148,15 +152,42 @@ public class GraphAnalyzer {
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, Path.of(outputFile + ".mermaid"), transitiveReferences, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, transitiveReferences, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences);
 
         // generate the html
-        HTMLReport.generateDependencyDetailsHTML(projectName, dependencyTree, mappedReferences, hrefTransitiveMap, allUnMappedReferences);
+        HTMLReport.generateDependencyDetailsHTML(PROJECT_NAME, dependencyTree, mappedReferences, hrefTransitiveMap, allUnMappedReferences);
         // write CSV file with all the data
-        writeDataToCSV("AllDependencyData.csv", dependencyTree, mappedReferences);
+        writeDataToCSV(dependencyTree, mappedReferences, allUnMappedReferences);
+      //  generateXML(dependencyTree);
     }
 
-    private void writeDataToCSV(String fileName, Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences) {
+    private static void generateXML(Graph<Node, DefaultEdge> dependencyTree) {
+        // Export to GraphML
+        // ID and label generators
+        Function<Node, String> vertexIdProvider = node ->
+                node.getGroupId() + ":" +
+                        node.getArtifactId() + ":" +
+                        node.getPackaging() + ":" +
+                        node.getVersion() + ":" +
+                        node.getDepLevel();
+
+        Function<Node, String> vertexLabelProvider = node ->
+                node.getGroupId() + node.getArtifactId() + "\\n" + node.getVersion();
+
+        GraphMLExporter<Node, DefaultEdge> exporter = new GraphMLExporter<>(
+                vertexIdProvider
+
+        );
+        exporter.setExportVertexLabels(true);
+        exporter.setExportEdgeLabels(false);
+
+        StringWriter writer = new StringWriter();
+        exporter.exportGraph(dependencyTree, writer);
+
+        System.out.println(writer);
+    }
+
+    private void writeDataToCSV(Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) {
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
         List<String[]> rows = new ArrayList<>();
@@ -177,7 +208,7 @@ public class GraphAnalyzer {
 
                             for (Reference reference : references) {
                                 if (reference.getInstruction() != null) {
-                                    referencesString.append("->").append(reference.getInstruction()).append(className).append("::").append(reference.getName()).append("\n");
+                                    referencesString.append(reference.getInstruction()).append("->").append(className).append("::").append(reference.getName()).append("\n");
                                 } else {
                                     referencesString.append(className).append("::").append(reference.getName()).append("\n");
                                 }
@@ -187,19 +218,51 @@ public class GraphAnalyzer {
                             }
                         }
                     }
-                    rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), referencesString.toString()});
+                    boolean conflicts = false;
+                    if (currentNode.getDescription() != null) {
+                        conflicts = currentNode.getDescription().contains("conflict with");
+                    }
+                    rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), String.valueOf(conflicts), referencesString.toString()});
                     visitedEdges.add(edge);
                 }
             }
         }
 
-        try (CSVWriter writer = new CSVWriter(new FileWriter(fileName))) {
-            String[] header = {"Dependency", "Dependency Scope", "Dependency Level", "Omitted", "Invoked References"};
+        try (CSVWriter writer = new CSVWriter(Files.newBufferedWriter(Paths.get(REPORT_FOLDER, "DependencyDetails.csv")))) {
+            String[] header = {"Dependency", "Dependency Scope", "Dependency Level", "Omitted", "Conflicts", "Invoked References"};
 
             writer.writeNext(header);
             writer.writeAll(rows);
         } catch (IOException e) {
             e.printStackTrace();
+        }
+
+        if (!allUnMappedReferences.isEmpty()) {
+            try (CSVWriter writer = new CSVWriter(new FileWriter(Paths.get(REPORT_FOLDER, "DependencyDetails.csv").toString(), true))) {
+                // Added a space in between the two data
+                writer.writeNext(new String[] {});
+                String[] header = {"Unmapped References"};
+                writer.writeNext(header);
+                List<String[]> unMappedData = new ArrayList<>();
+                allUnMappedReferences.forEach((className, references) -> {
+                    if (references == null || references.isEmpty()) {
+                        unMappedData.add(new String[]{className});
+                    } else {
+                        references.forEach(reference -> {
+                            StringBuilder referenceDetails = new StringBuilder();
+                            String instruction = reference.getInstruction();
+                            if (instruction != null && !instruction.isEmpty()) {
+                                referenceDetails.append(instruction).append("->");
+                            }
+                            referenceDetails.append(className).append("::").append(reference.getName());
+                            unMappedData.add(new String[]{referenceDetails.toString()});
+                        });
+                    }
+                });
+                writer.writeAll(unMappedData);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -209,6 +272,7 @@ public class GraphAnalyzer {
         for (Node dependency : mappedReferences.keySet()) {
             // check dependency level and omitted status
             if (dependency.getDepLevel() > 1) {
+                dependency.setTranFunctionsUsed(true);
                 transitiveReferences.put(dependency, mappedReferences.get(dependency));
             }
         }

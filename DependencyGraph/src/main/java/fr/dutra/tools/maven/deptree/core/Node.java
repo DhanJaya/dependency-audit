@@ -52,6 +52,8 @@ public class Node implements Serializable {
 
     private final int depLevel;
 
+    private boolean tranFunctionsUsed;
+
     private Node parent;
 
     private final List<Node> childNodes = new LinkedList<>();
@@ -133,7 +135,13 @@ public class Node implements Serializable {
         o.parent = this;
         return this.childNodes.add(o);
     }
+    public boolean isTranFunctionsUsed() {
+        return tranFunctionsUsed;
+    }
 
+    public void setTranFunctionsUsed(boolean tranFunctionsUsed) {
+        this.tranFunctionsUsed = tranFunctionsUsed;
+    }
     public boolean remove(final Node o) {
         return this.childNodes.remove(o);
     }
@@ -276,10 +284,23 @@ public class Node implements Serializable {
 
     @Override
     public String toString() {
-        StandardTextVisitor visitor = new StandardTextVisitor();
-        //consider the current node as a root node
-        visitor.visit(this.parent == null ? this : this.clone());
-        return visitor.toString();
+//        StandardTextVisitor visitor = new StandardTextVisitor();
+//        //consider the current node as a root node
+//        visitor.visit(this.parent == null ? this : this.clone());
+//        return visitor.toString();
+        final StringBuilder builder = new StringBuilder();
+        builder.append(this.groupId);
+        builder.append(":");
+        builder.append(this.artifactId);
+        builder.append(":");
+        builder.append(this.packaging);
+        builder.append(":");
+        builder.append(this.version);
+        if (this.scope != null) {
+            builder.append(":Scope=");
+            builder.append(this.scope);
+        }
+        return builder.toString();
     }
 
     public String getArtifactCanonicalForm() {
@@ -315,9 +336,6 @@ public class Node implements Serializable {
     }
 
     public String getJarName() {
-        if (this.classifier != null) {
-            return this.getArtifactId() + "-" + this.classifier + "-" + this.getVersion() + ".jar";
-        }
-        return this.getArtifactId() + "-" + this.getVersion() + ".jar";
+        return this.jarName;
     }
 }

@@ -1,7 +1,13 @@
 package org.dep.analyzer;
 
 import fr.dutra.tools.maven.deptree.core.Node;
-import javassist.*;
+import javassist.ClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtMethod;
+import javassist.CtField;
+import javassist.CtConstructor;
+import javassist.NotFoundException;
 import javassist.bytecode.BadBytecode;
 import org.dep.model.Reference;
 import org.dep.util.StandardJavaReferences;
@@ -15,10 +21,17 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -35,7 +48,7 @@ public class DepUsage {
     private static final String TEST_CLASSES = "/test-classes";
     private final static String META_INF_FILE = "META-INF";
 
-    public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode, URISyntaxException {
+    public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode {
         if (copyProjectDependencies(projectDir, mvnCmd)) {
             Set<String> clientClasses = findJavaClassesInDirectory(projectDir);
             // get classes in dependencies jar files
@@ -44,7 +57,7 @@ public class DepUsage {
                 // a map with all the classes and the jarfiles they are linked to
                 Map<String, List<Node>> allClassesInDep = new HashMap<>();
                 //TODO: do we need to keep track of the files that could not be extracted
-                Set<String> externalFiles = getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
+                getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
 
                 if (buildClientProject(projectDir, mvnCmd)) {
                     String projectTargetFolder = projectDir + TARGET;
@@ -67,46 +80,34 @@ public class DepUsage {
         }
     }
 
-    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException, URISyntaxException {
+    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException {
         // include the java classes as well, so that the standard java class will not be marked as unmapped references
         Map<String, Set<String>> standardJavaClasses = StandardJavaReferences.loadStandardJavaReferences();
-        List<ClassPath> classPaths = new ArrayList<>();
-        //ClassPool classPool = ClassPool.getDefault();
         ClassPool classPool = new ClassPool(true);
-        try {
-            if (depDirectory.isDirectory()) {
-                File[] jarFiles = depDirectory.listFiles((dir, name) -> name.endsWith(".jar"));
-                if (jarFiles != null) {
-                    for (File jarFile : jarFiles) {
-                        ClassPath classPath = classPool.insertClassPath(jarFile.getAbsolutePath());
-                        classPaths.add(classPath);
-                    }
+        for (String referencedClass : externalReferencesInvoked.keySet()) {
+            // get jars connected to that class
+            if (allClassesInDep.containsKey(referencedClass)) {
+                //TODO: Currently we only check the first dependency that includes the class
+                Set<Reference> unMappedReferences = new HashSet<>(externalReferencesInvoked.get(referencedClass));
+                List<Node> dependenciesWithClass = allClassesInDep.get(referencedClass);
+                List<String> parentClasses = new ArrayList<>();
+                if (dependenciesWithClass.size() > 0) {
+                    Node matchedDependency = dependenciesWithClass.get(0);
+                    ClassPath classPath = classPool.insertClassPath(matchedDependency.getJarName());
+                    mapReferenceWithDep(matchedDependency, referencedClass, unMappedReferences, mappedReferences, parentClasses, classPool);
+                    classPool.removeClassPath(classPath);
                 }
-            }
-            for (String referencedClass : externalReferencesInvoked.keySet()) {
-                // get jars connected to that class
-                if (allClassesInDep.containsKey(referencedClass)) {
-                    //TODO: Currently we only check the first dependency that includes the class
-                    Set<Reference> unMappedReferences = new HashSet<>(externalReferencesInvoked.get(referencedClass));
-                    List<Node> dependenciesWithClass = allClassesInDep.get(referencedClass);
-                    List<String> parentClasses = new ArrayList<>();
-                    if (dependenciesWithClass.size() > 0) {
-                        mapReferenceWithDep(dependenciesWithClass.get(0), referencedClass, unMappedReferences, mappedReferences, parentClasses, classPool);
-                    }
-                    if (!unMappedReferences.isEmpty()) {
+                if (!unMappedReferences.isEmpty()) {
 
-                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool, standardJavaClasses);
-                    }
-                    if (!unMappedReferences.isEmpty()) {
-                        allUnMappedReferences.put(referencedClass, unMappedReferences);
-                    }
+                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool, standardJavaClasses);
                 }
+                if (!unMappedReferences.isEmpty()) {
+                    allUnMappedReferences.put(referencedClass, unMappedReferences);
+                }
+            } else if (!standardJavaClasses.containsKey(referencedClass)) {
+                allUnMappedReferences.put(referencedClass, new HashSet<>());
             }
-        } finally {
-            // Always remove class paths to avoid locking the JARs
-            for (ClassPath cp : classPaths) {
-                classPool.removeClassPath(cp);
-            }
+
         }
     }
 
@@ -118,7 +119,10 @@ public class DepUsage {
                     List<String> superParentClasses = new ArrayList<>();
                     if (dependenciesWithParentClass.size() > 0 && !referencesToMap.isEmpty()) {
                         // We only consider the first match with the node if not found it will be highlighted in the graph
-                        mapReferenceWithDep(dependenciesWithClass.get(0), parentClass, referencesToMap, mappedReferences, superParentClasses, classPool);
+                        Node matchedDependency = dependenciesWithClass.get(0);
+                        ClassPath classPath = classPool.insertClassPath(matchedDependency.getJarName());
+                        mapReferenceWithDep(matchedDependency, parentClass, referencesToMap, mappedReferences, superParentClasses, classPool);
+                        classPool.removeClassPath(classPath);
                     }
                     if (!referencesToMap.isEmpty()) {
                         iterativelySearchParentClasses(allClassesInDep, mappedReferences, referencesToMap, dependenciesWithClass, superParentClasses, classPool, standardJavaClasses);
@@ -158,7 +162,7 @@ public class DepUsage {
                 // extract the superclass and interfaces
                 try {
                     CtClass superclass = ctClass.getSuperclass();
-                    if (superclass != null && !"java.lang.Object".equals(superclass.getName())) {
+                    if (superclass != null) {
                         parentClasses.add(superclass.getName());
                     }
                 } catch (NotFoundException ex) {
@@ -167,7 +171,7 @@ public class DepUsage {
                 try {
                     CtClass[] interfaces = ctClass.getInterfaces();
                     for (CtClass interfaceType : interfaces) {
-                        if (interfaceType != null && !"java.lang.Object".equals(interfaceType.getName())) {
+                        if (interfaceType != null) {
                             parentClasses.add(interfaceType.getName());
                         }
                     }
@@ -280,7 +284,7 @@ public class DepUsage {
                 if (!META_INF_FILE.equals(projectClassesDir.getName())) {
                     List<File> classFiles = Files.walk(projectClassesDir.toPath())
                             .map(Path::toFile)
-                            .filter(f -> f.getName().endsWith(".class"))
+                            .filter(f -> f.getName().endsWith(".class"))// && f.getName().contains("BadRequest") && f.getName().contains("Builder") && f.getName().contains("FieldViolation"))
                             .toList();
 
                     for (File classFile : classFiles) {
@@ -312,22 +316,23 @@ public class DepUsage {
      * @throws IOException
      */
     private Set<String> findJavaClassesInDirectory(File dir) throws IOException {
-        Stream<Path> stream = Files.walk(Paths.get(dir.toURI()));
-        Set<String> javaClassesInRepo = stream
-                .filter(file -> (!Files.isDirectory(file) && file.toString().endsWith(".java")))
-                .map(Path::toAbsolutePath)
-                .map(Path::toString)
-                .map(filePath -> filePath.replace(".java", ""))
-                .map(filePath -> filePath.replace("\\", "/"))
-                .collect(Collectors.toSet());
         Set<String> filteredClasses = new HashSet<>();
-        for (String javaClassInRepo : javaClassesInRepo) {
-            if (javaClassInRepo.contains("src/main/java/")) {
-                filteredClasses.add(javaClassInRepo.split("src/main/java/")[1]);
-            } else if (javaClassInRepo.contains("src/test/java/")) {
-                filteredClasses.add(javaClassInRepo.split("src/test/java/")[1]);
-            } else {
-                filteredClasses.add(javaClassInRepo);
+        try (Stream<Path> stream = Files.walk(Paths.get(dir.toURI()))) {
+            Set<String> javaClassesInRepo = stream
+                    .filter(file -> (!Files.isDirectory(file) && file.toString().endsWith(".java")))
+                    .map(Path::toAbsolutePath)
+                    .map(Path::toString)
+                    .map(filePath -> filePath.replace(".java", ""))
+                    .map(filePath -> filePath.replace("\\", "/"))
+                    .collect(Collectors.toSet());
+            for (String javaClassInRepo : javaClassesInRepo) {
+                if (javaClassInRepo.contains("src/main/java/")) {
+                    filteredClasses.add(javaClassInRepo.split("src/main/java/")[1]);
+                } else if (javaClassInRepo.contains("src/test/java/")) {
+                    filteredClasses.add(javaClassInRepo.split("src/test/java/")[1]);
+                } else {
+                    filteredClasses.add(javaClassInRepo);
+                }
             }
         }
         return filteredClasses;
@@ -340,43 +345,39 @@ public class DepUsage {
      * @return all the classes in dependencies and any other external files
      * @throws IOException throw exception if jar file is not found
      */
-    private Set<String> getDependencyClasses(File dependencyDirectory, Graph<Node, DefaultEdge> dependencyTree, Map<String, List<Node>> allClassesInDep) throws IOException {
+    private void getDependencyClasses(File dependencyDirectory, Graph<Node, DefaultEdge> dependencyTree, Map<String, List<Node>> allClassesInDep) throws IOException {
         File[] depFiles = dependencyDirectory.listFiles();
-        Set<String> externalFiles = new HashSet<>();
         if (depFiles != null) {
-            for (File depFile : depFiles) {
-                if (depFile.getName().endsWith(".jar")) {
-                    // map the jar file with the dependency name
-                    Node rootNode = dependencyTree.vertexSet().iterator().next();
-                    BreadthFirstIterator<Node, DefaultEdge> bfsIterator = new BreadthFirstIterator<>(dependencyTree, rootNode);
-                    boolean nodeNotFound = true;
-                    while (bfsIterator.hasNext() && nodeNotFound) {
-                        Node node = bfsIterator.next();
-                        node.setJarName(depFile.getName());
-                        if ((node.getClassifier() == null &&
-                                depFile.getName().equals(node.getArtifactId() + "-" + node.getVersion() + ".jar")) ||
-                                (node.getClassifier() != null && depFile.getName().equals(node.getArtifactId() +
-                                        "-" + node.getVersion() + "-" + node.getClassifier() + ".jar"))) {
-                            // add all classes of the jar file in to the Map
-                            Set<String> allClasses = getJavaClassNamesFromCompressedFiles(depFile);
-                            for (String className : allClasses) {
-                                String formattedClassName = className.replace("/", ".");
-                                List<Node> depThatContainsClass = allClassesInDep.getOrDefault(formattedClassName, new ArrayList<Node>());
-                                depThatContainsClass.add(node);
-                                allClassesInDep.put(formattedClassName, depThatContainsClass);
+
+            // map the jar file with the dependency name
+            Node rootNode = dependencyTree.vertexSet().iterator().next();
+            BreadthFirstIterator<Node, DefaultEdge> bfsIterator = new BreadthFirstIterator<>(dependencyTree, rootNode);
+            boolean nodeNotFound = true;
+            while (bfsIterator.hasNext()) {
+                Node node = bfsIterator.next();
+                if (!node.isOmitted()) {
+                    for (File depFile : depFiles) {
+                        if (depFile.getName().endsWith(".jar")) {
+                            if ((node.getClassifier() == null &&
+                                    depFile.getName().equals(node.getArtifactId() + "-" + node.getVersion() + ".jar")) ||
+                                    (node.getClassifier() != null && depFile.getName().equals(node.getArtifactId() +
+                                            "-" + node.getVersion() + "-" + node.getClassifier() + ".jar"))) {
+                                node.setJarName(depFile.getAbsolutePath());
+                                // add all classes of the jar file in to the Map
+                                Set<String> allClasses = getJavaClassNamesFromCompressedFiles(depFile);
+                                for (String className : allClasses) {
+                                    String formattedClassName = className.replace("/", ".");
+                                    List<Node> depThatContainsClass = allClassesInDep.getOrDefault(formattedClassName, new ArrayList<Node>());
+                                    depThatContainsClass.add(node);
+                                    allClassesInDep.put(formattedClassName, depThatContainsClass);
+                                }
+                                break;
                             }
-                            nodeNotFound = false;
                         }
                     }
-                    if (nodeNotFound) {
-                        externalFiles.add(depFile.getName());
-                    }
-                } else {
-                    externalFiles.add(depFile.getName());
                 }
             }
         }
-        return externalFiles;
     }
 
     /**
@@ -409,8 +410,7 @@ public class DepUsage {
      * @throws IOException
      */
     private boolean buildClientProject(File projectDir, String mvnCmd) throws IOException {
-        boolean projectBuildSuccess = false;
-        if (CommandExecutor.executeCommand(String.format("%s clean compile", mvnCmd), projectDir).contains("BUILD SUCCESS")) {
+        if (CommandExecutor.executeCommand(String.format("%s clean compile test-compile", mvnCmd), projectDir).contains("BUILD SUCCESS")) {
             logger.info("Project compiles successfully!!");
             return true;
         } else {
@@ -444,38 +444,4 @@ public class DepUsage {
         return dependenciesCopied;
     }
 
-    private List<String> getJavaClasses() throws IOException {
-        List<String> standardJavaClasses = new ArrayList<>();
-        URI uri = URI.create("jrt:/");
-        try (FileSystem fs = FileSystems.newFileSystem(uri, java.util.Collections.emptyMap())) {
-            Path basePath = fs.getPath("/modules");
-            // Collect all paths first to reuse them
-            List<Path> allPaths;
-            try (Stream<Path> pathStream = Files.walk(basePath)) {
-                allPaths = pathStream.collect(Collectors.toList());
-            }
-
-            // Extract module names from module-info.class files
-            List<String> moduleNames = allPaths.stream()
-                    .filter(path -> path.toString().endsWith("module-info.class"))
-                    .map(path -> path.toString().replace("module-info.class", ""))
-                    .collect(Collectors.toList());
-
-            // Extract class names from .class files
-            allPaths.stream()
-                    .filter(path -> path.toString().endsWith(".class"))
-                    .forEach(path -> {
-                        String classPath = path.toString();
-                        for (String module : moduleNames) {
-                            if (classPath.startsWith(module)) {
-                                String className = classPath.substring(module.length())
-                                        .replace(".class", "")
-                                        .replace("/", ".");
-                                standardJavaClasses.add(className);
-                            }
-                        }
-                    });
-        }
-        return standardJavaClasses;
-    }
 }

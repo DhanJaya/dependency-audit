@@ -1,13 +1,34 @@
 package org.reference;
 
 import javassist.NotFoundException;
-import javassist.bytecode.*;
+import javassist.bytecode.AnnotationsAttribute;
+import javassist.bytecode.AttributeInfo;
+
+import javassist.bytecode.BadBytecode;
+import javassist.bytecode.ClassFile;
+import javassist.bytecode.ConstPool;
+import javassist.bytecode.CodeAttribute;
+import javassist.bytecode.CodeIterator;
+import javassist.bytecode.ExceptionsAttribute;
+import javassist.bytecode.ExceptionTable;
+import javassist.bytecode.FieldInfo;
+import javassist.bytecode.LocalVariableAttribute;
+import javassist.bytecode.MethodInfo;
+import javassist.bytecode.Opcode;
+import javassist.bytecode.SignatureAttribute;
 import javassist.bytecode.annotation.Annotation;
 
 import org.dep.model.Reference;
 
-import java.io.*;
-import java.util.*;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 public class ReferenceFinder {
 
@@ -17,8 +38,6 @@ public class ReferenceFinder {
         BufferedInputStream fin
                 = new BufferedInputStream(new FileInputStream(className));
         ClassFile cf = new ClassFile(new DataInputStream(fin));
-        Map<String, Set<String>> methodCalls = new HashMap<>();
-        Map<String, Set<String>> fieldReferences = new HashMap<>();
         detectReferences(cf);
     }
 
@@ -26,70 +45,10 @@ public class ReferenceFinder {
         BufferedInputStream fin
                 = new BufferedInputStream(new FileInputStream(classFileLocation));
         ClassFile cf = new ClassFile(new DataInputStream(fin));
-        Map<String, Set<String>> methodCalls = new HashMap<>();
-        Map<String, Set<String>> fieldReferences = new HashMap<>();
+
         return detectReferences(cf);
     }
 
-    /**
-     * Extract all call sites of a class
-     *
-     * @param cf              The ClassFile object of the analyzed class
-     * @param methodCalls     collection to store all the class level invocations with its methods
-     * @param fieldReferences collection to store all the field level references
-     * @throws IOException
-     * @throws NotFoundException
-     */
-//    public static void detectReferences(ClassFile cf, Map<String, Set<String>> methodCalls, Map<String, Set<String>> fieldReferences) throws BadBytecode {
-//        // Map<String, Set<Reference>> classReferences = new HashMap<>();
-//        ConstPool constPool = cf.getConstPool();
-//        // Extract class annotations
-//        extractAnnotations1(cf.getAttributes(), methodCalls);
-//        // Extract method annotations
-//        for (MethodInfo method : cf.getMethods()) {
-//
-//            SignatureAttribute sigAttr = (SignatureAttribute) method.getAttribute(SignatureAttribute.tag);
-//            if (sigAttr != null) {
-//                String signature = sigAttr.getSignature();
-//                SignatureAttribute.MethodSignature parsedSig =
-//                        SignatureAttribute.toMethodSignature(signature);
-//                extractReturnAndParamTypes1(parsedSig.getReturnType(), methodCalls);
-//
-//                // Parameter types
-//                for (SignatureAttribute.Type paramType : parsedSig.getParameterTypes()) {
-//                    extractReturnAndParamTypes1(paramType, methodCalls);
-//                }
-//            }
-//            extractAnnotations1(method.getAttributes(), methodCalls);
-//        }
-//        // Extract field annotations
-//        for (FieldInfo fieldInfo : cf.getFields()) {
-//            extractAnnotations1(fieldInfo.getAttributes(), methodCalls);
-//        }
-//        // Extract primitive fields TODO: not sure if we need this as they are inbuilt Java variable types
-//        extractPrimitiveAndStringFields1(cf.getFields(), methodCalls);
-//        // Extract method calls, field references, and class references
-//        for (int i = 1; i < constPool.getSize(); i++) {
-//            switch (constPool.getTag(i)) {
-//                case ConstPool.CONST_Methodref:
-//                case ConstPool.CONST_InterfaceMethodref:
-//                    methodCalls
-//                            .computeIfAbsent(constPool.getMethodrefClassName(i), k -> new HashSet<>())
-//                            .add(constPool.getMethodrefName(i) + constPool.getMethodrefType(i));
-//                    break;
-//                case ConstPool.CONST_Fieldref:
-//                    fieldReferences
-//                            .computeIfAbsent(constPool.getFieldrefClassName(i), k -> new HashSet<>())
-//                            .add(constPool.getFieldrefName(i));
-//                    break;
-//                case ConstPool.CONST_Class:
-//                    if (!methodCalls.containsKey(constPool.getClassInfo(i))) {
-//                        methodCalls.put(constPool.getClassInfo(i), new HashSet<>());
-//                    }
-//                    break;
-//            }
-//        }
-//    }
 
     /**
      * Extract the parameter types and the return types for the method signature
@@ -99,8 +58,13 @@ public class ReferenceFinder {
      */
     private static void extractReturnAndParamTypes(SignatureAttribute.Type type, Map<String, Set<Reference>> classReferences) {
         if (type instanceof SignatureAttribute.ClassType classType) {
-            if (!classReferences.containsKey(classType.getName())) {
-                classReferences.computeIfAbsent(classType.getName(), k -> new HashSet<>());
+            String className = classType.getName();
+            // this is to handle references of inner classes or parameters directly referred with the package name
+            if (!className.contains(".")) {
+                className = classType.getDeclaringClass() + "$"+ classType.getName();
+            }
+            if (!classReferences.containsKey(className)) {
+                classReferences.computeIfAbsent(className, k -> new HashSet<>());
             }
             SignatureAttribute.TypeArgument[] args = classType.getTypeArguments();
             if (args != null) {
