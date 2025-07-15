@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.HashMap;
@@ -73,14 +74,14 @@ public class DepUsage {
                         // filter the client related classes and external classes
                         excludeInternalCallSites(referencesInClientCode, clientClasses);
                         //iteratively search for the invoked references in the dep classes
-                        checkReferencesInDep(allClassesInDep, referencesInClientCode, dependencyDirectory, mappedReferences, allUnMappedReferences);
+                        checkReferencesInDep(allClassesInDep, referencesInClientCode, mappedReferences, allUnMappedReferences);
                     }
                 }
             }
         }
     }
 
-    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, File depDirectory, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException {
+    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException {
         // include the java classes as well, so that the standard java class will not be marked as unmapped references
         Map<String, Set<String>> standardJavaClasses = StandardJavaReferences.loadStandardJavaReferences();
         ClassPool classPool = new ClassPool(true);
@@ -98,20 +99,18 @@ public class DepUsage {
                     classPool.removeClassPath(classPath);
                 }
                 if (!unMappedReferences.isEmpty()) {
-
-                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, dependenciesWithClass, parentClasses, classPool, standardJavaClasses);
+                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, parentClasses, classPool, standardJavaClasses);
                 }
                 if (!unMappedReferences.isEmpty()) {
                     allUnMappedReferences.put(referencedClass, unMappedReferences);
                 }
             } else if (!standardJavaClasses.containsKey(referencedClass)) {
-                allUnMappedReferences.put(referencedClass, new HashSet<>());
+                allUnMappedReferences.put(referencedClass, new HashSet<>(externalReferencesInvoked.get(referencedClass)));
             }
-
         }
     }
 
-    private void iterativelySearchParentClasses(Map<String, List<Node>> allClassesInDep, Map<Node, Map<String, Set<Reference>>> mappedReferences, Set<Reference> referencesToMap, List<Node> dependenciesWithClass, List<String> parentClasses, ClassPool classPool, Map<String, Set<String>> standardJavaClasses) throws NotFoundException {
+    private void iterativelySearchParentClasses(Map<String, List<Node>> allClassesInDep, Map<Node, Map<String, Set<Reference>>> mappedReferences, Set<Reference> referencesToMap, List<String> parentClasses, ClassPool classPool, Map<String, Set<String>> standardJavaClasses) throws NotFoundException {
         if (!parentClasses.isEmpty() && !referencesToMap.isEmpty()) {
             for (String parentClass : parentClasses) {
                 if (allClassesInDep.containsKey(parentClass)) {
@@ -119,13 +118,13 @@ public class DepUsage {
                     List<String> superParentClasses = new ArrayList<>();
                     if (dependenciesWithParentClass.size() > 0 && !referencesToMap.isEmpty()) {
                         // We only consider the first match with the node if not found it will be highlighted in the graph
-                        Node matchedDependency = dependenciesWithClass.get(0);
+                        Node matchedDependency = dependenciesWithParentClass.get(0);
                         ClassPath classPath = classPool.insertClassPath(matchedDependency.getJarName());
                         mapReferenceWithDep(matchedDependency, parentClass, referencesToMap, mappedReferences, superParentClasses, classPool);
                         classPool.removeClassPath(classPath);
                     }
                     if (!referencesToMap.isEmpty()) {
-                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, referencesToMap, dependenciesWithClass, superParentClasses, classPool, standardJavaClasses);
+                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, referencesToMap, superParentClasses, classPool, standardJavaClasses);
                     }
                 } else {
                     // check if it is a Standard Java Reference
@@ -136,10 +135,7 @@ public class DepUsage {
                         }
                     }
                 }
-
             }
-
-
         }
     }
 
@@ -160,26 +156,11 @@ public class DepUsage {
             }
             if (!references.isEmpty()) {
                 // extract the superclass and interfaces
-                try {
-                    CtClass superclass = ctClass.getSuperclass();
-                    if (superclass != null) {
-                        parentClasses.add(superclass.getName());
-                    }
-                } catch (NotFoundException ex) {
-                    System.out.println("No Super class");
+                String superclass = ctClass.getClassFile().getSuperclass();
+                if (superclass != null) {
+                    parentClasses.add(superclass);
                 }
-                try {
-                    CtClass[] interfaces = ctClass.getInterfaces();
-                    for (CtClass interfaceType : interfaces) {
-                        if (interfaceType != null) {
-                            parentClasses.add(interfaceType.getName());
-                        }
-                    }
-                } catch (NotFoundException ex) {
-                    System.out.println("No Interfaces");
-                }
-
-
+                Collections.addAll(parentClasses, ctClass.getClassFile().getInterfaces());
             }
         }
     }

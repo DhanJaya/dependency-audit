@@ -144,6 +144,8 @@ public class ReferenceFinder {
             extractAnnotations(fieldInfo.getAttributes(), classReferences);
             decodeFieldTypeDescriptor(fieldInfo.getDescriptor(), classReferences);
         }
+        // remove primitive types
+        removePrimitiveTypes(classReferences);
         return classReferences;
     }
 
@@ -186,8 +188,9 @@ public class ReferenceFinder {
             // include cast types
             if (opcode == Opcode.CHECKCAST) {
                 int classIndex = ci.u16bitAt(index + 1);
-                classReferences
-                        .computeIfAbsent(constPool.getClassInfo(classIndex), k -> new HashSet<>());
+                decodeFieldTypeDescriptor(constPool.getClassInfo(classIndex), classReferences);
+//                classReferences
+//                        .computeIfAbsent(constPool.getClassInfo(classIndex), k -> new HashSet<>());
             }
         }
     }
@@ -214,6 +217,8 @@ public class ReferenceFinder {
             }
         } else if (desc.startsWith("L")) {
             classReferences.computeIfAbsent(desc.substring(1, desc.length() - 1).replace('/', '.'), k -> new HashSet<>());
+        } else {
+            classReferences.computeIfAbsent(desc, k -> new HashSet<>());
         }
     }
 
@@ -326,5 +331,30 @@ public class ReferenceFinder {
                 type.equals("char") ||
                 type.equals("boolean") ||
                 type.equals("java.lang.String");
+    }
+
+    private static void removePrimitiveTypes(Map<String, Set<Reference>> classReferences) {
+        Set<String> primitiveDescriptors = Set.of(
+                "B", // byte
+                "C", // char
+                "D", // double
+                "F", // float
+                "I", // int
+                "J", // long
+                "S", // short
+                "Z" // boolean
+        );
+       // classReferences.keySet().removeIf(primitiveDescriptors::contains);
+        classReferences.keySet().removeIf(key -> {
+            // Direct primitive descriptor
+            if (primitiveDescriptors.contains(key)) {
+                return true;
+            }
+
+           //  Array of primitives: matches [I, [[B, etc.
+            String baseType = key.replaceAll("^\\[+", ""); // Remove leading '['s
+            return primitiveDescriptors.contains(baseType);
+
+        });
     }
 }
