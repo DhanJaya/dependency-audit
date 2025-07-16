@@ -99,8 +99,6 @@ public class ReferenceFinder {
 
             extractMethodSignatureAndDescriptor(classReferences, method);
 
-            //TODO have to check for parameter and return type annotations
-
             // extract method annotations
             extractAnnotations(method.getAttributes(), classReferences);
 
@@ -210,13 +208,13 @@ public class ReferenceFinder {
             String base = desc.substring(dim);
             if (base.startsWith("L") && base.endsWith(";")) {
                 classReferences
-                        .computeIfAbsent(base.replace('/', '.').replace("L", "").replace(";", ""), k -> new HashSet<>());
+                        .computeIfAbsent(base.substring(1, desc.length() - 1).replace('/', '.').replace(";", ""), k -> new HashSet<>());
 //            } else {
 //                // Primitive array
 //                results.add(desc); // optionally convert I -> int[] etc.
             }
-        } else if (desc.startsWith("L")) {
-            classReferences.computeIfAbsent(desc.substring(1, desc.length() - 1).replace('/', '.'), k -> new HashSet<>());
+        } else if (desc.startsWith("L") && desc.endsWith(";")) {
+            classReferences.computeIfAbsent(desc.substring(1, desc.length() - 1).replace('/', '.').replace(";", ""), k -> new HashSet<>());
         } else {
             classReferences.computeIfAbsent(desc, k -> new HashSet<>());
         }

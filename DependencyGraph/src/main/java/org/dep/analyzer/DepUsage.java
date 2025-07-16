@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
+import java.util.Objects;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -298,25 +299,80 @@ public class DepUsage {
      */
     private Set<String> findJavaClassesInDirectory(File dir) throws IOException {
         Set<String> filteredClasses = new HashSet<>();
-        try (Stream<Path> stream = Files.walk(Paths.get(dir.toURI()))) {
-            Set<String> javaClassesInRepo = stream
-                    .filter(file -> (!Files.isDirectory(file) && file.toString().endsWith(".java")))
-                    .map(Path::toAbsolutePath)
-                    .map(Path::toString)
-                    .map(filePath -> filePath.replace(".java", ""))
-                    .map(filePath -> filePath.replace("\\", "/"))
-                    .collect(Collectors.toSet());
-            for (String javaClassInRepo : javaClassesInRepo) {
-                if (javaClassInRepo.contains("src/main/java/")) {
-                    filteredClasses.add(javaClassInRepo.split("src/main/java/")[1]);
-                } else if (javaClassInRepo.contains("src/test/java/")) {
-                    filteredClasses.add(javaClassInRepo.split("src/test/java/")[1]);
-                } else {
-                    filteredClasses.add(javaClassInRepo);
+        Path dirPath = dir.toPath();
+        try (Stream<Path> stream = Files.walk(dirPath)) {
+            stream
+                    .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        Path relativePath = dirPath.relativize(path);
+                        String normalizedPath = relativePath.toString().replace(File.separatorChar, '/').replace(".java", "");
+                        if (normalizedPath.contains("src/main/java/")) {
+                            filteredClasses.add(normalizedPath.split("src/main/java/")[1]);
+                        } else if (normalizedPath.contains("src/test/java/")) {
+                            filteredClasses.add(normalizedPath.split("src/test/java/")[1]);
+                        } else {
+                            filteredClasses.add(normalizedPath);
+                        }
+                    });
+        }
+        // need to correct the generated main and test classes to the correct paths
+        formatTargetClassPaths(filteredClasses);
+
+        return filteredClasses;
+    }
+
+    private void formatTargetClassPaths(Set<String> allPaths) {
+        Set<String> roots = extractPackageRoots(allPaths);
+
+        // Collect the paths that need to be updated
+        Set<String> toReplace = allPaths.stream()
+                .filter(path -> path.startsWith("target/"))
+                .collect(Collectors.toSet());
+
+        for (String path : toReplace) {
+            for (String root : roots) {
+                int idx = path.indexOf(root + "/");
+                if (idx != -1) {
+                    String updatedPath = path.substring(idx);
+                    allPaths.remove(path);
+                    allPaths.add(updatedPath);
+                    break;
                 }
             }
         }
-        return filteredClasses;
+    }
+    private Set<String> extractPackageRoots(Set<String> paths) {
+        return paths.stream()
+                .filter(path -> !path.startsWith("target/"))
+                .map(path -> {
+                    String[] parts = path.split("/");
+                    return parts.length > 0 ? parts[0] : null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+    private void addGeneratedSourceFiles(File dir, Set<String> filteredClasses) throws IOException {
+        List<Path> generatedSourceRoots = List.of(
+                dir.toPath().resolve("target").resolve("generated-sources"),
+                dir.toPath().resolve("target").resolve("generated-test-sources")
+        );
+
+        for (Path sourceRoot : generatedSourceRoots) {
+            if (!Files.exists(sourceRoot)) continue;
+
+            try (Stream<Path> stream = Files.walk(sourceRoot)) {
+                stream
+                        .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
+                        .forEach(javaFile -> {
+                            Path relativePath = sourceRoot.relativize(javaFile);
+                            String className = relativePath
+                                    .toString()
+                                    .replace(File.separatorChar, '/')
+                                    .replace(".java", "");
+                            filteredClasses.add(className);
+                        });
+            }
+        }
     }
 
     /**
