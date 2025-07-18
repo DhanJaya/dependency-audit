@@ -32,7 +32,7 @@ public class MermaidFileGenerator {
      * @param dependencyTree
      * @param generateColors
      */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         addLegendToGraph(mermaid, newLine);
@@ -137,9 +137,8 @@ public class MermaidFileGenerator {
                     mermaid.append(tgtAlias).append(newLine);
 
                     ++counterForEdges;
-                    if (transitiveDepAndReferences.containsKey(dependencyTree.getEdgeTarget(edge))) {
-                        dependencyTree.getEdgeTarget(edge).setTranFunctionsUsed(true);
-                        includeTransitiveReference(rootNode, dependencyTree.getEdgeTarget(edge), transitiveDepAndReferences, mermaid, showTransitiveFunc, nodeAliasMap, hrefTransitiveMap);
+                    if (target.getDepLevel() > 1 && !target.getReferences().isEmpty()) {
+                        includeTransitiveReference(rootNode, target, mermaid, showTransitiveFunc, nodeAliasMap, hrefTransitiveMap);
                         linkNumbers.add(counterForEdges);
                         ++counterForEdges;
                     }
@@ -260,7 +259,7 @@ public class MermaidFileGenerator {
         }
     }
 
-    private void includeTransitiveReference(Node rootNode, Node transitiveDep, Map<Node, Map<String, Set<Reference>>> transitiveDepAndReferences, StringBuilder mermaid, boolean showTransitiveFunc, Map<Node, String> nodeAliasMap, Map<Node, String> hrefTransitiveMap) {
+    private void includeTransitiveReference(Node rootNode, Node transitiveDep, StringBuilder mermaid, boolean showTransitiveFunc, Map<Node, String> nodeAliasMap, Map<Node, String> hrefTransitiveMap) {
         String newLine = System.lineSeparator();
         // get the references used and display it on the node edge
         String srcAlias = nodeAliasMap.get(rootNode);
@@ -271,7 +270,8 @@ public class MermaidFileGenerator {
 
         if (showTransitiveFunc) {
             StringBuilder referencesString = new StringBuilder();
-            Map<String, Set<Reference>> transitiveReferences = transitiveDepAndReferences.get(transitiveDep);
+
+            Map<String, Set<Reference>> transitiveReferences = transitiveDep.getReferences();
             // maximum number of dependencies being appended to the graph
             int limit = 2;
             int count = 0;

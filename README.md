@@ -1,4 +1,4 @@
-# Dependency Visualization Tool for Maven Projects
+# DEPINSIGHT: Dependency Visualization Tool for Maven Projects
 
 This tool is designed to analyze and visualize all dependencies both direct and transitive, within a Maven project. It displays the resolved library versions used during build time in an interactive graph format. Each node in the graph represents a dependency, making it easy to understand the structure of your project.
 

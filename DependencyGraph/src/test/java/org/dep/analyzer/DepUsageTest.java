@@ -6,6 +6,7 @@ import javassist.bytecode.BadBytecode;
 import org.dep.model.Reference;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.traverse.BreadthFirstIterator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -31,21 +32,20 @@ public class DepUsageTest {
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest");
 
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.extractDependencyTree(new File(testProject.getFile()));
-        Map<Node, Map<String, Set<Reference>>> mappedReferences = new HashMap<>();
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap<>();
         DepUsage depUsage = new DepUsage();
-        depUsage.extractDepUsage(dependencyTree, new File(testProject.getFile()), mvnCmd, mappedReferences,allUnMappedReferences);
+        depUsage.extractDepUsage(dependencyTree, new File(testProject.getFile()), mvnCmd, allUnMappedReferences);
 
-        Assertions.assertEquals(5, mappedReferences.size());
+        BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Node matchedNode = null;
-
-        for (Node node : mappedReferences.keySet()) {
-            if (node.getDependencyName().equals("org.slf4j:slf4j-api:2.0.16")) {
-                matchedNode = node;
+        while (iterator.hasNext()) {
+            Node dependency = iterator.next();
+            if (dependency.getDependencyName().equals("org.slf4j:slf4j-api:2.0.16")) {
+                matchedNode = dependency;
                 break;
             }
         }
-        Map<String, Set<Reference>> matchedReferencesAndClasses = mappedReferences.get(matchedNode);
+        Map<String, Set<Reference>> matchedReferencesAndClasses = matchedNode.getReferences();
         Assertions.assertEquals(2, matchedReferencesAndClasses.size());
         // detect the references used from the org.slf4j.Logger class
         Set<Reference> references = matchedReferencesAndClasses.get("org.slf4j.Logger");

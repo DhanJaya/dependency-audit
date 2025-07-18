@@ -39,6 +39,7 @@ import java.util.function.Function;
 import org.dep.util.HTMLReport;
 import org.dep.util.MermaidFileGenerator;
 import org.jgrapht.Graph;
+import org.jgrapht.Graphs;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.nio.graphml.GraphMLExporter;
 import org.jgrapht.traverse.BreadthFirstIterator;
@@ -54,24 +55,32 @@ public class GraphAnalyzer {
     // The folder in which all reports will be generated under
     public static String REPORT_FOLDER = null;
     public static Option INPUT = Option.builder()
-            .argName("aUrlOrPOMFile")
+            .argName("POM-File")
             .option("input")
             .hasArg()
             .required(true)
             .desc("Provides the project pom.xml file path")
             .build();
 
+    public static Option OUTPUT_FOLDER = Option.builder()
+            .argName("output-folder")
+            .option("outputFolder")
+            .hasArg()
+            .required(true)
+            .desc("Provides the output folder name")
+            .build();
+
     public static Option TEST_DEP = Option.builder()
             .argName("exclude-test-scope")
-            .option("excludetestscope")
+            .option("excludeTestScope")
             .hasArg()
             .required(false)
             .desc("Graph should exclude test scope dependencies by default false")
             .build();
 
     public static Option TRANSITIVE_FUNC = Option.builder()
-            .argName("transitive-func")
-            .option("transitivefunctions")
+            .argName("transitive-func-usage")
+            .option("includeTransitiveUsage")
             .hasArg()
             .required(false)
             .desc("Display used transitive functions in the graph by default false")
@@ -92,6 +101,7 @@ public class GraphAnalyzer {
 
         Options options = new Options();
         options.addOption(INPUT);
+        options.addOption(OUTPUT_FOLDER);
         options.addOption(TEST_DEP);
         options.addOption(TRANSITIVE_FUNC);
 
@@ -105,6 +115,7 @@ public class GraphAnalyzer {
         try {
             line = parser.parse(options, args);
             input = line.getParsedOptionValue(INPUT);
+            REPORT_FOLDER = line.getOptionValue(OUTPUT_FOLDER);
             excludeTestScope = Boolean.parseBoolean(line.getParsedOptionValue(TEST_DEP));
             showTransitiveFunc = Boolean.parseBoolean(line.getParsedOptionValue(TRANSITIVE_FUNC));
         } catch (org.apache.commons.cli.ParseException e) {
@@ -122,44 +133,55 @@ public class GraphAnalyzer {
         graphAnalyzer.analyze(excludeTestScope, showTransitiveFunc, projectPom);
     }
 
-    private void createReportFolder(String projectName, boolean excludeTestScope, boolean showTransitiveFunc) {
-        StringBuilder suffix = new StringBuilder();
-        if (excludeTestScope) {
-            suffix.append("NoTest");
-        }
-        if (showTransitiveFunc) {
-            suffix.append("WithTrans");
-        }
-        REPORT_FOLDER = projectName.replace(":", "_") + suffix;
-    }
-
     public void analyze(boolean excludeTestScope, boolean showTransitiveFunc, File projectPom) throws IOException, NotFoundException, BadBytecode, URISyntaxException {
         Graph<Node, DefaultEdge> dependencyTree = extractDependencyTree(projectPom.getParentFile());
 
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Node rootNode = iterator.next();
         PROJECT_NAME = rootNode.getGroupId() + ":" + rootNode.getArtifactId();
-        createReportFolder(PROJECT_NAME, excludeTestScope, showTransitiveFunc);
         DepUsage depUsage = new DepUsage();
-        Map<Node, Map<String, Set<Reference>>> mappedReferences = new HashMap<>();
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap<>();
-        depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD, mappedReferences, allUnMappedReferences);
+        depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD, allUnMappedReferences);
 
-        // detect if functions of transitive dependencies or especially functionality form omitted dependencies are invoked
-        Map<Node, Map<String, Set<Reference>>> transitiveReferences = identifyTransitiveReferences(mappedReferences);
         Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope);
+
+        // check for bloated direct dependencies by iterating through all its child nodes to check if any functionalities are used
+        checkBloatedDep(dependencyTree, rootNode);
+
         // generate colors
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, transitiveReferences, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences);
 
         // generate the html
-        HTMLReport.generateDependencyDetailsHTML(PROJECT_NAME, dependencyTree, mappedReferences, hrefTransitiveMap, allUnMappedReferences);
+        HTMLReport.generateDependencyDetailsHTML(PROJECT_NAME, dependencyTree, hrefTransitiveMap, allUnMappedReferences);
         // write CSV file with all the data
-        writeDataToCSV(dependencyTree, mappedReferences, allUnMappedReferences);
-      //  generateXML(dependencyTree);
+        writeDataToCSV(dependencyTree, allUnMappedReferences);
+        //  generateXML(dependencyTree);
     }
+
+    private void checkBloatedDep(Graph<Node, DefaultEdge> dependencyTree, Node rootNode) {
+        List<Node> directDeps = Graphs.successorListOf(dependencyTree, rootNode);
+        // check for bloated dependencies
+        for (Node directDep : directDeps) {
+            if (directDep.getReferences().isEmpty()) {
+                // check chile nodes if their functionalities are used
+                Iterator<Node> iterator = new BreadthFirstIterator<>(dependencyTree, directDep);
+                boolean referenceUsed = false;
+                while (iterator.hasNext()) {
+                    Node transitiveDep = iterator.next();
+                    if (!transitiveDep.getReferences().isEmpty()) {
+                        referenceUsed = true;
+                    }
+                }
+                if (!referenceUsed) {
+                    directDep.setBloatedDep(true);
+                }
+            }
+        }
+    }
+
 
     private static void generateXML(Graph<Node, DefaultEdge> dependencyTree) {
         // Export to GraphML
@@ -187,7 +209,7 @@ public class GraphAnalyzer {
         System.out.println(writer);
     }
 
-    private void writeDataToCSV(Graph<Node, DefaultEdge> dependencyTree, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) {
+    private void writeDataToCSV(Graph<Node, DefaultEdge> dependencyTree, Map<String, Set<Reference>> allUnMappedReferences) {
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
         List<String[]> rows = new ArrayList<>();
@@ -198,38 +220,19 @@ public class GraphAnalyzer {
                 if (!visitedEdges.contains(edge)) {
                     Node currentNode = dependencyTree.getEdgeTarget(edge);
                     StringBuilder referencesString = new StringBuilder();
-                    if (mappedReferences.containsKey(currentNode)) {
-
-                        Map<String, Set<Reference>> classAndReferences = mappedReferences.get(dependencyTree.getEdgeTarget(edge));
-                        // format string to display on arrow
-                        for (Map.Entry<String, Set<Reference>> entry : classAndReferences.entrySet()) {
-                            String className = entry.getKey();
-                            Set<Reference> references = entry.getValue();
-
-                            for (Reference reference : references) {
-                                if (reference.getInstruction() != null) {
-                                    referencesString.append(reference.getInstruction()).append("->").append(className).append("::").append(reference.getName()).append("\n");
-                                } else {
-                                    referencesString.append(className).append("::").append(reference.getName()).append("\n");
-                                }
-                            }
-                            if (references.isEmpty()) {
-                                referencesString.append(className).append("\n");
-                            }
-                        }
-                    }
+                    HTMLReport.formatReferenceString(referencesString, dependencyTree.getEdgeTarget(edge).getReferences(), "\n");
                     boolean conflicts = false;
                     if (currentNode.getDescription() != null) {
                         conflicts = currentNode.getDescription().contains("conflict with");
                     }
-                    rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), String.valueOf(conflicts), referencesString.toString()});
+                    rows.add(new String[]{currentNode.getDependencyName(), currentNode.getScope(), String.valueOf(currentNode.getDepLevel()), String.valueOf(currentNode.isOmitted()), String.valueOf(conflicts), String.valueOf(currentNode.isBloatedDep()), referencesString.toString()});
                     visitedEdges.add(edge);
                 }
             }
         }
 
         try (CSVWriter writer = new CSVWriter(Files.newBufferedWriter(Paths.get(REPORT_FOLDER, "DependencyDetails.csv")))) {
-            String[] header = {"Dependency", "Dependency Scope", "Dependency Level", "Omitted", "Conflicts", "Invoked References"};
+            String[] header = {"Dependency", "Dependency Scope", "Dependency Level", "Omitted", "Conflicts", "Bloated Direct Dependency", "Invoked References"};
 
             writer.writeNext(header);
             writer.writeAll(rows);
@@ -240,7 +243,7 @@ public class GraphAnalyzer {
         if (!allUnMappedReferences.isEmpty()) {
             try (CSVWriter writer = new CSVWriter(new FileWriter(Paths.get(REPORT_FOLDER, "DependencyDetails.csv").toString(), true))) {
                 // Added a space in between the two data
-                writer.writeNext(new String[] {});
+                writer.writeNext(new String[]{});
                 String[] header = {"Unmapped References"};
                 writer.writeNext(header);
                 List<String[]> unMappedData = new ArrayList<>();

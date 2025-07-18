@@ -59,7 +59,7 @@ public class GraphAnalyzerTest {
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, new HashMap<>(), false, false, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, false, false, hrefTransitiveMap, allUnMappedReferences);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
@@ -76,7 +76,7 @@ public class GraphAnalyzerTest {
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true);
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, new HashMap<>(), true, false, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, true, false, hrefTransitiveMap, allUnMappedReferences);
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }

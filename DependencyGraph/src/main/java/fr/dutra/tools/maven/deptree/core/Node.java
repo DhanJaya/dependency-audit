@@ -15,9 +15,15 @@
  */
 package fr.dutra.tools.maven.deptree.core;
 
+import org.dep.model.Reference;
+
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 
@@ -54,9 +60,13 @@ public class Node implements Serializable {
 
     private boolean tranFunctionsUsed;
 
+    private boolean bloatedDep;
+
     private Node parent;
 
     private final List<Node> childNodes = new LinkedList<>();
+
+    private Map<String, Set<Reference>> references = new HashMap<>();
 
     private String jarName;
 
@@ -135,6 +145,17 @@ public class Node implements Serializable {
         o.parent = this;
         return this.childNodes.add(o);
     }
+
+    public void addReferences(String referencedClass, Set<Reference> references) {
+        Set<Reference> existingReferences = this.references.computeIfAbsent(referencedClass, k -> new HashSet<>());
+        // Add the new references to the existing set
+        existingReferences.addAll(references);
+    }
+
+    public Map<String, Set<Reference>> getReferences() {
+        return this.references;
+    }
+
     public boolean isTranFunctionsUsed() {
         return tranFunctionsUsed;
     }
@@ -160,6 +181,14 @@ public class Node implements Serializable {
 
     public String getDependencyName() {
         return this.groupId + ":" + this.artifactId + ":" + this.version;
+    }
+
+    public boolean isBloatedDep() {
+        return bloatedDep;
+    }
+
+    public void setBloatedDep(boolean bloatedDep) {
+        this.bloatedDep = bloatedDep;
     }
 
     @Override

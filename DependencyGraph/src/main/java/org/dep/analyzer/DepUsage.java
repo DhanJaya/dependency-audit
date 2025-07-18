@@ -23,7 +23,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +49,7 @@ public class DepUsage {
     private static final String TEST_CLASSES = "/test-classes";
     private final static String META_INF_FILE = "META-INF";
 
-    public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode {
+    public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode {
         if (copyProjectDependencies(projectDir, mvnCmd)) {
             Set<String> clientClasses = findJavaClassesInDirectory(projectDir);
             // get classes in dependencies jar files
@@ -75,14 +74,14 @@ public class DepUsage {
                         // filter the client related classes and external classes
                         excludeInternalCallSites(referencesInClientCode, clientClasses);
                         //iteratively search for the invoked references in the dep classes
-                        checkReferencesInDep(allClassesInDep, referencesInClientCode, mappedReferences, allUnMappedReferences);
+                        checkReferencesInDep(allClassesInDep, referencesInClientCode, allUnMappedReferences);
                     }
                 }
             }
         }
     }
 
-    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, Map<Node, Map<String, Set<Reference>>> mappedReferences, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException {
+    private void checkReferencesInDep(Map<String, List<Node>> allClassesInDep, Map<String, Set<Reference>> externalReferencesInvoked, Map<String, Set<Reference>> allUnMappedReferences) throws NotFoundException, IOException {
         // include the java classes as well, so that the standard java class will not be marked as unmapped references
         Map<String, Set<String>> standardJavaClasses = StandardJavaReferences.loadStandardJavaReferences();
         ClassPool classPool = new ClassPool(true);
@@ -96,11 +95,11 @@ public class DepUsage {
                 if (dependenciesWithClass.size() > 0) {
                     Node matchedDependency = dependenciesWithClass.get(0);
                     ClassPath classPath = classPool.insertClassPath(matchedDependency.getJarName());
-                    mapReferenceWithDep(matchedDependency, referencedClass, unMappedReferences, mappedReferences, parentClasses, classPool);
+                    mapReferenceWithDep(matchedDependency, referencedClass, unMappedReferences, parentClasses, classPool);
                     classPool.removeClassPath(classPath);
                 }
                 if (!unMappedReferences.isEmpty()) {
-                    iterativelySearchParentClasses(allClassesInDep, mappedReferences, unMappedReferences, parentClasses, classPool, standardJavaClasses);
+                    iterativelySearchParentClasses(allClassesInDep, unMappedReferences, parentClasses, classPool, standardJavaClasses);
                 }
                 if (!unMappedReferences.isEmpty()) {
                     allUnMappedReferences.put(referencedClass, unMappedReferences);
@@ -111,7 +110,7 @@ public class DepUsage {
         }
     }
 
-    private void iterativelySearchParentClasses(Map<String, List<Node>> allClassesInDep, Map<Node, Map<String, Set<Reference>>> mappedReferences, Set<Reference> referencesToMap, List<String> parentClasses, ClassPool classPool, Map<String, Set<String>> standardJavaClasses) throws NotFoundException {
+    private void iterativelySearchParentClasses(Map<String, List<Node>> allClassesInDep, Set<Reference> referencesToMap, List<String> parentClasses, ClassPool classPool, Map<String, Set<String>> standardJavaClasses) throws NotFoundException {
         if (!parentClasses.isEmpty() && !referencesToMap.isEmpty()) {
             for (String parentClass : parentClasses) {
                 if (allClassesInDep.containsKey(parentClass)) {
@@ -121,11 +120,11 @@ public class DepUsage {
                         // We only consider the first match with the node if not found it will be highlighted in the graph
                         Node matchedDependency = dependenciesWithParentClass.get(0);
                         ClassPath classPath = classPool.insertClassPath(matchedDependency.getJarName());
-                        mapReferenceWithDep(matchedDependency, parentClass, referencesToMap, mappedReferences, superParentClasses, classPool);
+                        mapReferenceWithDep(matchedDependency, parentClass, referencesToMap, superParentClasses, classPool);
                         classPool.removeClassPath(classPath);
                     }
                     if (!referencesToMap.isEmpty()) {
-                        iterativelySearchParentClasses(allClassesInDep, mappedReferences, referencesToMap, superParentClasses, classPool, standardJavaClasses);
+                        iterativelySearchParentClasses(allClassesInDep, referencesToMap, superParentClasses, classPool, standardJavaClasses);
                     }
                 } else {
                     // check if it is a Standard Java Reference
@@ -140,20 +139,16 @@ public class DepUsage {
         }
     }
 
-    private void mapReferenceWithDep(Node dependency, String referencedClass, Set<Reference> references, Map<Node, Map<String, Set<Reference>>> mappedReferences, List<String> parentClasses, ClassPool classPool) throws NotFoundException {
+    private void mapReferenceWithDep(Node dependency, String referencedClass, Set<Reference> references, List<String> parentClasses, ClassPool classPool) throws NotFoundException {
         if (references.isEmpty()) {
-            Map mappedPriorReferences = mappedReferences.getOrDefault(dependency, new HashMap<>());
-            mappedPriorReferences.put(referencedClass, references);
-            mappedReferences.put(dependency, mappedPriorReferences);
+            dependency.addReferences(referencedClass, references);
         } else {
             CtClass ctClass = classPool.get(referencedClass);
             Set<Reference> mappedMethodsAndFields = new HashSet<>();
 
             mapReferences(references, ctClass, mappedMethodsAndFields);
             if (!mappedMethodsAndFields.isEmpty()) {
-                Map mappedPriorReferences = mappedReferences.getOrDefault(dependency, new HashMap<>());
-                mappedPriorReferences.put(referencedClass, mappedMethodsAndFields);
-                mappedReferences.put(dependency, mappedPriorReferences);
+                dependency.addReferences(referencedClass, mappedMethodsAndFields);
             }
             if (!references.isEmpty()) {
                 // extract the superclass and interfaces
@@ -266,7 +261,7 @@ public class DepUsage {
                 if (!META_INF_FILE.equals(projectClassesDir.getName())) {
                     List<File> classFiles = Files.walk(projectClassesDir.toPath())
                             .map(Path::toFile)
-                            .filter(f -> f.getName().endsWith(".class"))// && f.getName().contains("BadRequest") && f.getName().contains("Builder") && f.getName().contains("FieldViolation"))
+                            .filter(f -> f.getName().endsWith(".class"))
                             .toList();
 
                     for (File classFile : classFiles) {
@@ -350,29 +345,6 @@ public class DepUsage {
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-    }
-    private void addGeneratedSourceFiles(File dir, Set<String> filteredClasses) throws IOException {
-        List<Path> generatedSourceRoots = List.of(
-                dir.toPath().resolve("target").resolve("generated-sources"),
-                dir.toPath().resolve("target").resolve("generated-test-sources")
-        );
-
-        for (Path sourceRoot : generatedSourceRoots) {
-            if (!Files.exists(sourceRoot)) continue;
-
-            try (Stream<Path> stream = Files.walk(sourceRoot)) {
-                stream
-                        .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
-                        .forEach(javaFile -> {
-                            Path relativePath = sourceRoot.relativize(javaFile);
-                            String className = relativePath
-                                    .toString()
-                                    .replace(File.separatorChar, '/')
-                                    .replace(".java", "");
-                            filteredClasses.add(className);
-                        });
-            }
-        }
     }
 
     /**
