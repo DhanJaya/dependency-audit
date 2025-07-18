@@ -54,6 +54,7 @@ public class GraphAnalyzer {
     public static String PROJECT_NAME = null;
     // The folder in which all reports will be generated under
     public static String REPORT_FOLDER = null;
+    // The command line option to get the pom file location
     public static Option INPUT = Option.builder()
             .argName("POM-File")
             .option("input")
@@ -62,6 +63,7 @@ public class GraphAnalyzer {
             .desc("Provides the project pom.xml file path")
             .build();
 
+    // The command line option to get folder name to copy the reports
     public static Option OUTPUT_FOLDER = Option.builder()
             .argName("output-folder")
             .option("outputFolder")
@@ -70,6 +72,7 @@ public class GraphAnalyzer {
             .desc("Provides the output folder name")
             .build();
 
+    // The command line option to determine if the test scope dependencies are excluded
     public static Option TEST_DEP = Option.builder()
             .argName("exclude-test-scope")
             .option("excludeTestScope")
@@ -78,6 +81,7 @@ public class GraphAnalyzer {
             .desc("Graph should exclude test scope dependencies by default false")
             .build();
 
+    // The command line option to display the transitive functionalities used
     public static Option TRANSITIVE_FUNC = Option.builder()
             .argName("transitive-func-usage")
             .option("includeTransitiveUsage")

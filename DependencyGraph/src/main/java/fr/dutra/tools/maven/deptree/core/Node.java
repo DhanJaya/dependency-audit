@@ -146,6 +146,11 @@ public class Node implements Serializable {
         return this.childNodes.add(o);
     }
 
+    /**
+     * Add all references used from the dependency
+     * @param referencedClass Class of the dependency used
+     * @param references All references used from the class
+     */
     public void addReferences(String referencedClass, Set<Reference> references) {
         Set<Reference> existingReferences = this.references.computeIfAbsent(referencedClass, k -> new HashSet<>());
         // Add the new references to the existing set
@@ -313,10 +318,6 @@ public class Node implements Serializable {
 
     @Override
     public String toString() {
-//        StandardTextVisitor visitor = new StandardTextVisitor();
-//        //consider the current node as a root node
-//        visitor.visit(this.parent == null ? this : this.clone());
-//        return visitor.toString();
         final StringBuilder builder = new StringBuilder();
         builder.append(this.groupId);
         builder.append(":");

@@ -34,6 +34,12 @@ public class HTMLReport {
     //Name of the HTML file created with the dependency graph
     public static final String GRAPH_HTML = "Graph.html";
 
+    /**
+     * Generate the HTML page with the mermaid graph created
+     * @param mermaidGraph the mermaid graph string
+     * @param rootName Name of the project under analysis
+     * @throws IOException The exception will fail if it fails to create the file
+     */
     public static void generateMermaidGraphHTML(String mermaidGraph, String rootName) throws IOException {
         Document doc = Document.createShell("");
 
