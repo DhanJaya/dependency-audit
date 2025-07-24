@@ -18,7 +18,7 @@ public class ReferenceFinderTest {
 
     @Test
     public void testExtractClassDetails() throws IOException, BadBytecode {
-        String classFilePath = "testcallsite\\ClassLevel.class";
+        String classFilePath = "testcallsite/ClassLevel.class";
         // Load as a URL
         URL resource = getClass().getClassLoader().getResource(classFilePath);
         if (resource == null) {
@@ -41,7 +41,7 @@ public class ReferenceFinderTest {
 
     @Test
     public void testExtractFieldDetails() throws IOException, BadBytecode {
-        String classFilePath = "testcallsite\\InstanceAndClassFields.class";
+        String classFilePath = "testcallsite/InstanceAndClassFields.class";
         // Load as a URL
         URL resource = getClass().getClassLoader().getResource(classFilePath);
         if (resource == null) {
@@ -85,7 +85,7 @@ public class ReferenceFinderTest {
 
     @Test
     public void testExtractMethodDetails() throws IOException, BadBytecode {
-        String classFilePath = "testcallsite\\MethodLevel.class";
+        String classFilePath = "testcallsite/MethodLevel.class";
 
         // Load as a URL
         URL resource = getClass().getClassLoader().getResource(classFilePath);
@@ -130,7 +130,7 @@ public class ReferenceFinderTest {
 
     @Test
     public void testDeclaredMethods() throws IOException {
-        String classFilePath = "testreference\\DeclaredMethodsChild.class";
+        String classFilePath = "testreference/DeclaredMethodsChild.class";
         // Load as a URL
         URL resource = getClass().getClassLoader().getResource(classFilePath);
         if (resource == null) {

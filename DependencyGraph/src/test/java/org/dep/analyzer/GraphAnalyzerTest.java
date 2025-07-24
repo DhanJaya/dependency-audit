@@ -54,7 +54,7 @@ public class GraphAnalyzerTest {
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
         GraphAnalyzer.REPORT_FOLDER = "DependencyTreeWithTest";
-        Path depGraphInMermaid = Path.of("DependencyTreeWithTest/Graph.html");
+        Path depGraphInMermaid = Path.of(GraphAnalyzer.REPORT_FOLDER, "Graph.html");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false, new HashSet<>());
@@ -71,7 +71,7 @@ public class GraphAnalyzerTest {
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
         GraphAnalyzer.REPORT_FOLDER = "DependencyTreeWithoutTest";
-        Path depGraphInMermaid = Path.of("DependencyTreeWithoutTest/Graph.html");
+        Path depGraphInMermaid = Path.of(GraphAnalyzer.REPORT_FOLDER, "Graph.html");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
         Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true, new HashSet<>());
@@ -85,7 +85,8 @@ public class GraphAnalyzerTest {
     @Test
     public void testGraphWithTransitiveUsage() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
-        Path depGraphInMermaid = Path.of("org.example_DependencyAuditTestWithTrans/Graph.html");
+        GraphAnalyzer.REPORT_FOLDER = "TestFolder1";
+        Path depGraphInMermaid = Path.of(GraphAnalyzer.REPORT_FOLDER, "Graph.html");
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest/pom.xml");
         File projectPom = new File(testProject.getFile());
         graphAnalyzer.analyze(false, true, projectPom);
@@ -96,7 +97,8 @@ public class GraphAnalyzerTest {
     @Test
     public void testGraphWithDisplayTransitiveUsage() throws NotFoundException, IOException, BadBytecode, URISyntaxException {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
-        Path depGraphInMermaid = Path.of("org.example_DependencyAuditTestWithTrans/Graph.html");
+        GraphAnalyzer.REPORT_FOLDER = "TestFolder2";
+        Path depGraphInMermaid = Path.of(GraphAnalyzer.REPORT_FOLDER, "Graph.html");
         URL testProject = getClass().getClassLoader().getResource("DependencyAuditTest/pom.xml");
         File projectPom = new File(testProject.getFile());
         graphAnalyzer.analyze(false, true, projectPom);
