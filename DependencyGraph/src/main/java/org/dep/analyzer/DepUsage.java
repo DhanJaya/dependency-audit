@@ -43,30 +43,27 @@ import static org.dep.util.Helper.createFolderIfNotExists;
 public class DepUsage {
 
     private static final Logger logger = LoggerFactory.getLogger(DepUsage.class);
-    private static final String COPY_DEPENDENCY_FOLDER = "/DepCopied";
-    private static final String TARGET = "/target";
-    private static final String CLASSES = "/classes";
-    private static final String TEST_CLASSES = "/test-classes";
+    private static final String COPY_DEPENDENCY_FOLDER = "DepCopied";
+    private static final String TARGET = "target";
+
     private final static String META_INF_FILE = "META-INF";
 
     public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode {
         if (copyProjectDependencies(projectDir, mvnCmd)) {
             Set<String> clientClasses = new HashSet<>();
-            File dependencyDirectory = new File(projectDir + COPY_DEPENDENCY_FOLDER);
+            File dependencyDirectory = new File(projectDir, COPY_DEPENDENCY_FOLDER);
             // a map with all the classes and the jarfiles they are linked to
             Map<String, List<Node>> allClassesInDep = new HashMap<>();
             //TODO: do we need to keep track of the files that could not be extracted
             getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
 
             if (buildClientProject(projectDir, mvnCmd)) {
-                String projectTargetFolder = projectDir + TARGET;
                 // check if target exists and class and test-classes
-                File targetFolder = new File(projectTargetFolder);
+                File targetFolder = new File(projectDir, TARGET);
                 if (targetFolder.exists()) {
                     // get all classes in target folder
-                    File targetDirectory = new File(projectTargetFolder);
                     Map<String, Set<Reference>> referencesInClientCode = new HashMap<>();
-                    getCallSitesToVerify(targetDirectory, referencesInClientCode, clientClasses);
+                    getCallSitesToVerify(targetFolder, referencesInClientCode, clientClasses);
                     // filter the client related classes and external classes
                     excludeInternalCallSites(referencesInClientCode, clientClasses);
                     //iteratively search for the invoked references in the dep classes
@@ -280,68 +277,6 @@ public class DepUsage {
         }
     }
 
-    /**
-     * Extracting all java files in the entire repository
-     *
-     * @param dir directory of the repository (can also be the project folder of not child projects are available)
-     * @return Set of java classes in the repository
-     * @throws IOException
-     */
-    private Set<String> findJavaClassesInDirectory(File dir) throws IOException {
-        Set<String> filteredClasses = new HashSet<>();
-        Path dirPath = dir.toPath();
-        try (Stream<Path> stream = Files.walk(dirPath)) {
-            stream
-                    .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
-                    .forEach(path -> {
-                        Path relativePath = dirPath.relativize(path);
-                        String normalizedPath = relativePath.toString().replace(File.separatorChar, '/').replace(".java", "");
-                        if (normalizedPath.contains("src/main/java/")) {
-                            filteredClasses.add(normalizedPath.split("src/main/java/")[1]);
-                        } else if (normalizedPath.contains("src/test/java/")) {
-                            filteredClasses.add(normalizedPath.split("src/test/java/")[1]);
-                        } else {
-                            filteredClasses.add(normalizedPath);
-                        }
-                    });
-        }
-        // need to correct the generated main and test classes to the correct paths
-        formatTargetClassPaths(filteredClasses);
-
-        return filteredClasses;
-    }
-
-    private void formatTargetClassPaths(Set<String> allPaths) {
-        Set<String> roots = extractPackageRoots(allPaths);
-
-        // Collect the paths that need to be updated
-        Set<String> toReplace = allPaths.stream()
-                .filter(path -> path.startsWith("target/"))
-                .collect(Collectors.toSet());
-
-        for (String path : toReplace) {
-            for (String root : roots) {
-                int idx = path.indexOf(root + "/");
-                if (idx != -1) {
-                    String updatedPath = path.substring(idx);
-                    allPaths.remove(path);
-                    allPaths.add(updatedPath);
-                    break;
-                }
-            }
-        }
-    }
-
-    private Set<String> extractPackageRoots(Set<String> paths) {
-        return paths.stream()
-                .filter(path -> !path.startsWith("target/"))
-                .map(path -> {
-                    String[] parts = path.split("/");
-                    return parts.length > 0 ? parts[0] : null;
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-    }
 
     /**
      * Get all dependency classes in the collected dependency folder
@@ -433,7 +368,7 @@ public class DepUsage {
      */
     private boolean copyProjectDependencies(File projectDir, String mvnCmd) throws IOException {
         boolean dependenciesCopied = false;
-        String depCopiedLocation = projectDir.toString() + COPY_DEPENDENCY_FOLDER;
+        String depCopiedLocation = new File(projectDir, COPY_DEPENDENCY_FOLDER).toString();
         // need to create a folder to copy the dependencies within the client project
         if (createFolderIfNotExists(depCopiedLocation)) {
             if (CommandExecutor.executeCommand(String.format("%s dependency:copy-dependencies -DoutputDirectory=%s", mvnCmd, depCopiedLocation), projectDir).contains("BUILD SUCCESS")) {
