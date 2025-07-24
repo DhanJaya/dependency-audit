@@ -54,5 +54,5 @@ Specify the following parameters when running the tool:
 ### 📘 Sample Input
 
 ```bash
--input D:\documents\DepTool\Repos\apache_dubbo\dubbo-remoting\dubbo-remoting-api\pom.xml -outputFolder Results -excludeTestScope true -includeTransitiveUsage true
+java -jar dependency-audit.jar -input D:\documents\DepTool\Repos\apache_dubbo\dubbo-remoting\dubbo-remoting-api\pom.xml -outputFolder Results -excludeTestScope true -includeTransitiveUsage true
 ```
