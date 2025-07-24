@@ -29,7 +29,7 @@ This tool is designed to analyze and visualize all dependencies both direct and 
 ## How to Use the Tool
 
 ### Prerequisites
-- Java 21 must be installed.
+- Java 21 and Maven must be installed.
 
 ### Running the Tool
 You can either:
@@ -46,12 +46,13 @@ Specify the following parameters when running the tool:
 
 | Parameter              | Description                                                              | Required | Default |
 |------------------------|--------------------------------------------------------------------------|----------|---------|
-| `-input`               | **Absolute path** to the `pom.xml` file                                  | Yes   | –       |
-| `-excludetestscope`    | Excludes test-scope dependencies from the graph                          | No    | `false` |
-| `-transitivefunctions` | Displays which functionalities of transitive dependencies are in use     | No    | `false` |
+| `-input`                  | **Absolute path** to the `pom.xml` file                                  | Yes   | –       |
+| `-outputFolder`           | Foder name for the results created                                       | Yes   | –       |
+| `-excludeTestScope`       | Excludes test-scope dependencies from the graph                          | No    | `false` |
+| `-includeTransitiveUsage` | Displays which functionalities of transitive dependencies are in use     | No    | `false` |
 
 ### 📘 Sample Input
 
 ```bash
--input D:\documents\DepTool\Repos\google_guava\guava\pom.xml -excludetestscope true -transitivefunctions true
+-input D:\documents\DepTool\Repos\apache_dubbo\dubbo-remoting\dubbo-remoting-api\pom.xml -outputFolder Results -excludeTestScope true -includeTransitiveUsage true
 ```
