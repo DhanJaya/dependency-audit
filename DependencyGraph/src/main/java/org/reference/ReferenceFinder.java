@@ -32,20 +32,11 @@ import java.util.Set;
 
 public class ReferenceFinder {
 
-    public static void main(String[] args) throws IOException, BadBytecode {
-
-        String className = "D:\\PhD\\workspace\\Dependency-Audit-New\\dependency-audit\\DependencyGraph\\target\\classes\\org\\callsite\\ClassLevel.class";
-        BufferedInputStream fin
-                = new BufferedInputStream(new FileInputStream(className));
-        ClassFile cf = new ClassFile(new DataInputStream(fin));
-        detectReferences(cf);
-    }
-
-    public static Map<String, Set<Reference>> extractReferences(String classFileLocation) throws IOException, BadBytecode {
+    public static Map<String, Set<Reference>> extractReferences(String classFileLocation, Set<String> clientClasses) throws IOException, BadBytecode {
         BufferedInputStream fin
                 = new BufferedInputStream(new FileInputStream(classFileLocation));
         ClassFile cf = new ClassFile(new DataInputStream(fin));
-
+        clientClasses.add(cf.getName());
         return detectReferences(cf);
     }
 
@@ -208,10 +199,7 @@ public class ReferenceFinder {
             String base = desc.substring(dim);
             if (base.startsWith("L") && base.endsWith(";")) {
                 classReferences
-                        .computeIfAbsent(base.substring(1, desc.length() - 1).replace('/', '.').replace(";", ""), k -> new HashSet<>());
-//            } else {
-//                // Primitive array
-//                results.add(desc); // optionally convert I -> int[] etc.
+                        .computeIfAbsent(base.substring(1, base.length() - 1).replace('/', '.').replace(";", ""), k -> new HashSet<>());
             }
         } else if (desc.startsWith("L") && desc.endsWith(";")) {
             classReferences.computeIfAbsent(desc.substring(1, desc.length() - 1).replace('/', '.').replace(";", ""), k -> new HashSet<>());
@@ -342,10 +330,10 @@ public class ReferenceFinder {
                 "S", // short
                 "Z" // boolean
         );
-       // classReferences.keySet().removeIf(primitiveDescriptors::contains);
+
         classReferences.keySet().removeIf(key -> {
             // Direct primitive descriptor
-            if (primitiveDescriptors.contains(key)) {
+            if (key == null || primitiveDescriptors.contains(key)) {
                 return true;
             }
 

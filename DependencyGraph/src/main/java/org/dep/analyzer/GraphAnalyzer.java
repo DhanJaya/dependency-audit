@@ -146,8 +146,8 @@ public class GraphAnalyzer {
         DepUsage depUsage = new DepUsage();
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap<>();
         depUsage.extractDepUsage(dependencyTree, projectPom.getParentFile(), MAVEN_CMD, allUnMappedReferences);
-
-        Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope);
+        Set<String> containsConflicts = new HashSet<>();
+        Map<String, Integer> duplicateNodes = findDuplicates(dependencyTree, excludeTestScope, containsConflicts);
 
         // check for bloated direct dependencies by iterating through all its child nodes to check if any functionalities are used
         checkBloatedDep(dependencyTree, rootNode);
@@ -156,7 +156,7 @@ public class GraphAnalyzer {
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<Node, String> hrefTransitiveMap = new HashMap<>();
         MermaidFileGenerator mermaidFileGenerator = new MermaidFileGenerator();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, excludeTestScope, showTransitiveFunc, hrefTransitiveMap, allUnMappedReferences, containsConflicts);
 
         // generate the html
         HTMLReport.generateDependencyDetailsHTML(PROJECT_NAME, dependencyTree, hrefTransitiveMap, allUnMappedReferences);
@@ -286,7 +286,7 @@ public class GraphAnalyzer {
         return transitiveReferences;
     }
 
-    protected Map<String, Integer> findDuplicates(Graph<Node, DefaultEdge> dependencyTree, boolean removeTestDep) {
+    protected Map<String, Integer> findDuplicates(Graph<Node, DefaultEdge> dependencyTree, boolean removeTestDep, Set<String> containsConflicts) {
         List<Node> visitedNodes = new ArrayList<>();
         Map<String, Integer> duplicateDeps = new HashMap<>();
         for (Node node : dependencyTree.vertexSet()) {
@@ -299,6 +299,9 @@ public class GraphAnalyzer {
                     duplicateDeps.put(String.format("%s:%s", node.getGroupId(), node.getArtifactId()), duplicateDeps.getOrDefault(String.format("%s:%s", node.getGroupId(), node.getArtifactId()), 1) + 1);
                     break;
                 }
+            }
+            if (node.getDescription() != null && node.getDescription().contains("conflict with")) {
+                containsConflicts.add(String.format("%s:%s", node.getGroupId(), node.getArtifactId()));
             }
             visitedNodes.add(node);
         }

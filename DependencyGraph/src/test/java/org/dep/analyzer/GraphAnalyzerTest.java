@@ -19,6 +19,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -42,7 +43,7 @@ public class GraphAnalyzerTest {
         GraphAnalyzer graphAnalyzer = new GraphAnalyzer();
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
-        Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false);
+        Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false, new HashSet<>());
         Assertions.assertEquals(5, duplicateNodes.size(), "The number of duplicate nodes does not match");
     }
 
@@ -56,10 +57,10 @@ public class GraphAnalyzerTest {
         Path depGraphInMermaid = Path.of("DependencyTreeWithTest/Graph.html");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
-        Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false);
+        Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, false, new HashSet<>());
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, false, false, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, false, false, hrefTransitiveMap, allUnMappedReferences, new HashSet<>());
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }
@@ -73,10 +74,10 @@ public class GraphAnalyzerTest {
         Path depGraphInMermaid = Path.of("DependencyTreeWithoutTest/Graph.html");
         URL testProject = getClass().getClassLoader().getResource("dependencytree/deptree1.txt");
         Graph<Node, DefaultEdge> dependencyTree = graphAnalyzer.readDependencyTree(new File(testProject.getFile()));
-        Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true);
+        Map<String, Integer> duplicateNodes = graphAnalyzer.findDuplicates(dependencyTree, true, new HashSet<>());
         Map<String, ColorStyleTracker> generateColors = ColorGenerator.generateColors(duplicateNodes);
         Map<String, Set<Reference>> allUnMappedReferences = new HashMap();
-        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, true, false, hrefTransitiveMap, allUnMappedReferences);
+        mermaidFileGenerator.exportToMermaid(dependencyTree, generateColors, true, false, hrefTransitiveMap, allUnMappedReferences, new HashSet<>());
         Assertions.assertTrue(Files.exists(depGraphInMermaid));
 
     }

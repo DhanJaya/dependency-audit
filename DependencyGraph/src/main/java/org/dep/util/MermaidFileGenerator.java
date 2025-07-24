@@ -32,7 +32,7 @@ public class MermaidFileGenerator {
      * @param dependencyTree
      * @param generateColors
      */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences) throws IOException {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences, Set<String> containsConflicts) throws IOException {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         addLegendToGraph(mermaid, newLine);
@@ -41,6 +41,7 @@ public class MermaidFileGenerator {
         Node rootNode = null;
         String rootNodeName = null;
         boolean isRootNode = false;
+        StringBuilder warningMessage = new StringBuilder();
         // Assign aliases and declare node labels
         for (Node node : dependencyTree.vertexSet()) {
             if (dependencyTree.inDegreeOf(node) == 0) {
@@ -58,6 +59,7 @@ public class MermaidFileGenerator {
                     .append(newLine);
             index++;
             isRootNode = false;
+            constructWarningMsg(containsConflicts, warningMessage, node);
         }
         BreadthFirstIterator<Node, DefaultEdge> iterator = new BreadthFirstIterator<>(dependencyTree);
         Set<DefaultEdge> visitedEdges = new HashSet<>();
@@ -94,22 +96,6 @@ public class MermaidFileGenerator {
                                 visitedEdges.add(defaultEdge);
                                 Node parentNode = dependencyTree.getEdgeSource(defaultEdge);
                                 Node childNode = dependencyTree.getEdgeTarget(defaultEdge);
-                                if (!nodeAliasMap.containsKey(parentNode)) {
-                                    String parentAlias = CellReference.convertNumToColString(index);
-                                    nodeAliasMap.put(parentNode, parentAlias);
-                                    mermaid.append(parentAlias)
-                                            .append(formatDepName(node, generateColors, nodeAliasMap, isRootNode))
-                                            .append(newLine);
-                                    index++;
-                                }
-                                if (!nodeAliasMap.containsKey(childNode)) {
-                                    String childAlias = CellReference.convertNumToColString(index);
-                                    nodeAliasMap.put(childNode, childAlias);
-                                    mermaid.append(childAlias)
-                                            .append(formatDepName(node, generateColors, nodeAliasMap, isRootNode))
-                                            .append(newLine);
-                                    index++;
-                                }
                                 // Add the node links to the graph except last node which will be added in the next step
                                 if (!target.equals(childNode)) {
                                     mermaid.append("\t").append(nodeAliasMap.get(parentNode));
@@ -125,8 +111,6 @@ public class MermaidFileGenerator {
                         }
                         srcAlias = nodeAliasMap.get(source);
                     }
-
-
                     mermaid.append("\t").append(srcAlias);
 
                     if (target.getScope() != null && "test".equals(target.getScope())) {
@@ -148,12 +132,33 @@ public class MermaidFileGenerator {
         // append link style to the graph
         appendColorsToGraph(generateColors, newLine, mermaid);
         appendTransitiveLinkColor(linkNumbers, mermaid);
-
-        addUnMappedReferencesToGraph(allUnMappedReferences, newLine, mermaid, index);
+        appendWarningMsg(newLine, mermaid, index, warningMessage);
+      //  addUnMappedReferencesToGraph(allUnMappedReferences, newLine, mermaid, index);
 
         // generate HTML file
         HTMLReport.generateMermaidGraphHTML(mermaid.toString(), rootNodeName);
       //  Files.write(Path.of("TransitiveFunctions.mermaid"), mermaid.toString().getBytes()); //- to write to a .mermaid file
+    }
+
+    private static int appendWarningMsg(String newLine, StringBuilder mermaid, int index, StringBuilder warningMessage) {
+        if (!warningMessage.isEmpty()) {
+            String warningAlias = CellReference.convertNumToColString(index);
+            mermaid.append(newLine).append(warningAlias).append("[\"`").append(warningMessage);
+            mermaid.append("`\"]").append(newLine).append("style ").append(warningAlias).append(" fill:none,stroke-width:5px,stroke: grey");
+            index++;
+        }
+        return index;
+    }
+
+    private static void constructWarningMsg(Set<String> containsConflicts, StringBuilder warningMessage, Node node) {
+        if(containsConflicts.contains(node.getGroupId() + ":" + node.getArtifactId()) && !node.getReferences().isEmpty()) {
+            if (warningMessage.isEmpty()) {
+                warningMessage.append("⚠\uFE0F Version conflict(s) detected in used dependency(ies):")
+                        .append("\n").append(node.getGroupId()).append(":").append(node.getArtifactId());
+            } else {
+                warningMessage.append(",\n ").append(node.getGroupId()).append(":").append(node.getArtifactId());
+            }
+        }
     }
 
     private static void addUnMappedReferencesToGraph(Map<String, Set<Reference>> allUnMappedReferences, String newLine, StringBuilder mermaid, int index) {

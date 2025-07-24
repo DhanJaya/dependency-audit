@@ -138,7 +138,7 @@ public class HTMLReport {
                     if (node.getDescription() != null) {
                         row.appendElement("td").text(String.valueOf(node.getDescription().contains("conflict with")));
                     } else {
-                        row.appendElement("td").text("");
+                        row.appendElement("td").text("false");
                     }
                     row.appendElement("td").text(String.valueOf(currentNode.isBloatedDep()));
                     if (hrefTransitiveMap.containsKey(currentNode)) {

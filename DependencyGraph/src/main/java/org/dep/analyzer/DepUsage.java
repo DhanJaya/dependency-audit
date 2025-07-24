@@ -51,31 +51,26 @@ public class DepUsage {
 
     public void extractDepUsage(Graph<Node, DefaultEdge> dependencyTree, File projectDir, String mvnCmd, Map<String, Set<Reference>> allUnMappedReferences) throws IOException, NotFoundException, BadBytecode {
         if (copyProjectDependencies(projectDir, mvnCmd)) {
-            Set<String> clientClasses = findJavaClassesInDirectory(projectDir);
-            // get classes in dependencies jar files
-            if (!clientClasses.isEmpty()) {
-                File dependencyDirectory = new File(projectDir + COPY_DEPENDENCY_FOLDER);
-                // a map with all the classes and the jarfiles they are linked to
-                Map<String, List<Node>> allClassesInDep = new HashMap<>();
-                //TODO: do we need to keep track of the files that could not be extracted
-                getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
+            Set<String> clientClasses = new HashSet<>();
+            File dependencyDirectory = new File(projectDir + COPY_DEPENDENCY_FOLDER);
+            // a map with all the classes and the jarfiles they are linked to
+            Map<String, List<Node>> allClassesInDep = new HashMap<>();
+            //TODO: do we need to keep track of the files that could not be extracted
+            getDependencyClasses(dependencyDirectory, dependencyTree, allClassesInDep);
 
-                if (buildClientProject(projectDir, mvnCmd)) {
-                    String projectTargetFolder = projectDir + TARGET;
-                    // check if target exists and class and test-classes
-                    File targetFolder = new File(projectTargetFolder);
-                    if (targetFolder.exists()) {
-                        // get classes in target folder
-                        File classesDirectory = new File(projectTargetFolder + CLASSES);
-                        File testClassesDirectory = new File(projectTargetFolder + TEST_CLASSES);
-                        Map<String, Set<Reference>> referencesInClientCode = new HashMap<>();
-                        getCallSitesToVerify(classesDirectory, referencesInClientCode);
-                        getCallSitesToVerify(testClassesDirectory, referencesInClientCode);
-                        // filter the client related classes and external classes
-                        excludeInternalCallSites(referencesInClientCode, clientClasses);
-                        //iteratively search for the invoked references in the dep classes
-                        checkReferencesInDep(allClassesInDep, referencesInClientCode, allUnMappedReferences);
-                    }
+            if (buildClientProject(projectDir, mvnCmd)) {
+                String projectTargetFolder = projectDir + TARGET;
+                // check if target exists and class and test-classes
+                File targetFolder = new File(projectTargetFolder);
+                if (targetFolder.exists()) {
+                    // get all classes in target folder
+                    File targetDirectory = new File(projectTargetFolder);
+                    Map<String, Set<Reference>> referencesInClientCode = new HashMap<>();
+                    getCallSitesToVerify(targetDirectory, referencesInClientCode, clientClasses);
+                    // filter the client related classes and external classes
+                    excludeInternalCallSites(referencesInClientCode, clientClasses);
+                    //iteratively search for the invoked references in the dep classes
+                    checkReferencesInDep(allClassesInDep, referencesInClientCode, allUnMappedReferences);
                 }
             }
         }
@@ -254,7 +249,7 @@ public class DepUsage {
      * @return A map containing internal and external call sites used in the project
      * @throws IOException An exception will occur if the find call site method returns an exception while process
      */
-    private void getCallSitesToVerify(File classesDirectory, Map<String, Set<Reference>> classesAndCallSites) throws IOException, BadBytecode {
+    private void getCallSitesToVerify(File classesDirectory, Map<String, Set<Reference>> classesAndCallSites, Set<String> clientClasses) throws IOException, BadBytecode {
         if (classesDirectory.exists()) {
             File[] classDirectories = classesDirectory.listFiles(File::isDirectory);
             for (File projectClassesDir : classDirectories) {
@@ -265,7 +260,7 @@ public class DepUsage {
                             .toList();
 
                     for (File classFile : classFiles) {
-                        Map<String, Set<Reference>> extractedCallSites = ReferenceFinder.extractReferences(classFile.getAbsolutePath());
+                        Map<String, Set<Reference>> extractedCallSites = ReferenceFinder.extractReferences(classFile.getAbsolutePath(), clientClasses);
                         for (Map.Entry<String, Set<Reference>> entry : extractedCallSites.entrySet()) {
                             String key = entry.getKey();
                             Set<Reference> newSet = entry.getValue();
@@ -336,6 +331,7 @@ public class DepUsage {
             }
         }
     }
+
     private Set<String> extractPackageRoots(Set<String> paths) {
         return paths.stream()
                 .filter(path -> !path.startsWith("target/"))
