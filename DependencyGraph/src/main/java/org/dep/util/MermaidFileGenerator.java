@@ -24,15 +24,18 @@ import java.util.stream.Collectors;
 
 public class MermaidFileGenerator {
 
-    private static final Logger logger = LoggerFactory.getLogger(MermaidFileGenerator.class);
-
     /**
-     * Generate the mermaid file for the passed dependency tree at the given path location
+     * Generate the graph in mermaid format from the passed dependency tree
      *
-     * @param dependencyTree
-     * @param generateColors
+     * @param dependencyTree     all dependency details
+     * @param generateColors     colors generated for duplicate dependencies
+     * @param removeTestDep      if the test dependencies excluded
+     * @param showTransitiveFunc if transitive function details are displayed
+     * @param hrefTransitiveMap  the href to the dependency table when displaying transitive details
+     * @param containsConflicts  if conflicts exist with dependencies that are used by the client
+     * @throws IOException exception thrown if graph is not generated
      */
-    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Map<String, Set<Reference>> allUnMappedReferences, Set<String> containsConflicts) throws IOException {
+    public void exportToMermaid(Graph<Node, DefaultEdge> dependencyTree, Map<String, ColorStyleTracker> generateColors, boolean removeTestDep, boolean showTransitiveFunc, Map<Node, String> hrefTransitiveMap, Set<String> containsConflicts) throws IOException {
         String newLine = System.lineSeparator();
         StringBuilder mermaid = new StringBuilder("graph  LR;" + newLine);
         addLegendToGraph(mermaid, newLine);
@@ -133,11 +136,9 @@ public class MermaidFileGenerator {
         appendColorsToGraph(generateColors, newLine, mermaid);
         appendTransitiveLinkColor(linkNumbers, mermaid);
         appendWarningMsg(newLine, mermaid, index, warningMessage);
-      //  addUnMappedReferencesToGraph(allUnMappedReferences, newLine, mermaid, index);
 
         // generate HTML file
         HTMLReport.generateMermaidGraphHTML(mermaid.toString(), rootNodeName);
-      //  Files.write(Path.of("TransitiveFunctions.mermaid"), mermaid.toString().getBytes()); //- to write to a .mermaid file
     }
 
     private static int appendWarningMsg(String newLine, StringBuilder mermaid, int index, StringBuilder warningMessage) {
@@ -151,7 +152,7 @@ public class MermaidFileGenerator {
     }
 
     private static void constructWarningMsg(Set<String> containsConflicts, StringBuilder warningMessage, Node node) {
-        if(containsConflicts.contains(node.getGroupId() + ":" + node.getArtifactId()) && !node.getReferences().isEmpty()) {
+        if (containsConflicts.contains(node.getGroupId() + ":" + node.getArtifactId()) && !node.getReferences().isEmpty()) {
             if (warningMessage.isEmpty()) {
                 warningMessage.append("⚠\uFE0F Version conflict(s) detected in used dependency(ies):")
                         .append("\n").append(node.getGroupId()).append(":").append(node.getArtifactId());
@@ -161,35 +162,12 @@ public class MermaidFileGenerator {
         }
     }
 
-    private static void addUnMappedReferencesToGraph(Map<String, Set<Reference>> allUnMappedReferences, String newLine, StringBuilder mermaid, int index) {
-        // Append unmapped referenced to the graph
-        if (!allUnMappedReferences.isEmpty()) {
-            // create index for unmapped references
-            String unmappedAlias = CellReference.convertNumToColString(index);
-            mermaid.append(newLine).append(unmappedAlias).append("[\"`**Unmapped References**").append(newLine);
-            allUnMappedReferences.forEach((className, references) -> {
-                if (references == null || references.isEmpty()) {
-                    mermaid.append(className).append(newLine);
-                } else {
-                    references.forEach(reference -> {
-                        String instruction = reference.getInstruction();
-                        if (instruction != null && !instruction.isEmpty()) {
-                            mermaid.append(instruction).append("->");
-                        }
-                        mermaid.append(className).append("::").append(reference.getName()).append(newLine);
-                    });
-                }
-            });
-            mermaid.append("`\"]").append(newLine).append("style ").append(unmappedAlias).append(" fill:none,stroke-width:5px,stroke: grey");
-        }
-    }
-
     private void addLegendToGraph(StringBuilder graph, String lineSeparator) {
         graph.append("subgraph Legend").append(lineSeparator)
                 .append("direction LR").append(lineSeparator)
-                .append("L0{{✔️ Resolved Dependency}}").append(lineSeparator)
+                .append("L0{{<b><span style='color:green'>&#10004;</span></b> Resolved Dependency}}").append(lineSeparator)
                 .append("style L0 stroke-width:10px,stroke-dasharray: 5 5").append(lineSeparator)
-                .append("L1{{\"`❌ Conflicts with another version`\"}}").append(lineSeparator)
+                .append("L1{{<b><span style='color:red'>&#10006;</span></b> Conflicts with another version}}").append(lineSeparator)
                 .append("style L1 stroke:#ed1b0c,stroke-width:10px,stroke-dasharray: 5 5").append(lineSeparator)
                 .append("L2(Project)").append(lineSeparator)
                 .append("L3(Dependency)").append(lineSeparator)
@@ -220,7 +198,7 @@ public class MermaidFileGenerator {
                     if (colorStyleTracker.getIndexAssigned() == 0) {
                         colorStyleTracker.setIndexAssigned(colorStyleTracker.getIndexAssigned() + 1);
                     }
-                    prefix = "✔️";
+                    prefix = "<b><span style='color:green'>#10004;</span></b>";
                     nodeStyle.setStyle("stroke-width:10px,stroke-dasharray: 5 5"); //stroke:#10ed0c,
                     nodeStyle.setIcon(prefix);
                     nodeStyle.setColor(colorStyleTracker.getGeneratedColors().get(0));
@@ -235,7 +213,7 @@ public class MermaidFileGenerator {
                     nodeStyle.setColor(colorStyleTracker.getGeneratedColors().get(currentIndex));
                     colorStyleTracker.setIndexAssigned(currentIndex + 1);
                     if (node.getDescription() != null && node.getDescription().contains("conflict with")) {
-                        prefix = "❌";
+                        prefix = "<b><span style='color:red'>#10006;</span></b>";
                         nodeStyle.setStyle("stroke:#ed1b0c,stroke-width:10px,stroke-dasharray: 5 5");
                         nodeStyle.setIcon(prefix);
                     }
